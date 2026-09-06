@@ -1,6 +1,7 @@
 import { AgentDecisionSchema, AgentPlanSchema, type AgentDecision, type AgentPlan, type ModelProvider, type ModelRequest } from './schemas.js';
 import { NeedleProvider } from './needle-provider.js';
 import { OpenRouterProvider } from './openrouter-provider.js';
+import type { AgentStateManager, TerminationReason } from './state.js';
 
 export interface AgentLoopLimits { maxIterations: number; maxToolCalls: number; maxExecutionMs: number }
 export interface AgentToolExecutor { executeTool(tool: string, args: unknown, signal?: AbortSignal): Promise<unknown> }
@@ -12,6 +13,8 @@ export interface AgentRunInput {
   limits?: Partial<AgentLoopLimits>;
   /** Test seam: override the default Needle-first / OpenRouter-escalation pair. */
   providers?: { primary?: ModelProvider; escalation?: ModelProvider };
+  /** Opt-in agent state recording (Milestone 4). Absent = no recording. */
+  state?: { manager: AgentStateManager; sessionId?: string; workflowId?: string };
 }
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
@@ -38,7 +41,7 @@ function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], his
  * Milestone 2: Needle-first agent loop with OpenRouter escalation.
  * Parses + validates every decision via AgentDecisionSchema; rejects unknown tools.
  */
-export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean }> {
+export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean; sessionId?: string }> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const t0 = Date.now();
   const needle = input.providers?.primary instanceof NeedleProvider
@@ -66,9 +69,17 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   try {
 
   if (isPrimary(provider)) await needleApi?.resetConversation().catch(() => undefined);
+  const stated = input.state;
+  const session = stated ? stated.manager.create(input.task, stated.sessionId, stated.workflowId) : undefined;
+  const rec = (e: Parameters<AgentStateManager['record']>[1]): void => {
+    if (stated && session) try { stated.manager.record(session.id, e); } catch { /* recording never breaks the loop */ }
+  };
+  const end = (reason: TerminationReason, detail?: string): void => {
+    if (stated && session) try { stated.manager.terminate(session.id, reason, detail); } catch { /* best effort */ }
+  };
   for (let i = 1; i <= limits.maxIterations; i++) {
-    if (Date.now() - t0 > limits.maxExecutionMs) throw new Error('agent loop: execution time limit exceeded');
-    if (input.signal?.aborted) throw new Error('agent loop: aborted');
+    if (Date.now() - t0 > limits.maxExecutionMs) { end('time_limit'); throw new Error('agent loop: execution time limit exceeded'); }
+    if (input.signal?.aborted) { end('aborted'); throw new Error('agent loop: aborted'); }
 
     // Needle contract: turn 1 frames task+tools; later turns feed the raw
     // tool result back so the model continues the loop (result-forward).
@@ -90,7 +101,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       res = await provider.generate(req);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (provider !== escalation) { provider = escalation; escalated = true; history.push({ note: 'primary provider failed, escalated', error: msg }); continue; }
+      if (provider !== escalation) { provider = escalation; escalated = true; history.push({ note: 'primary provider failed, escalated', error: msg }); rec({ kind: 'escalation', reason: 'primary provider failed', provider: 'escalation' }); continue; }
+      end('provider_failure', msg);
       throw new Error(`agent loop: escalation provider failed after primary (${history.length} prior observations): ${msg}`);
     }
     // Needle native contract → AgentDecision translation (primary only when it is a NeedleProvider).
@@ -116,36 +128,46 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       decision = AgentDecisionSchema.parse(JSON.parse(cleaned));
     } catch {
       history.push({ malformedOutput: res.text.slice(0, 500) });
+      rec({ kind: 'malformed_output', excerpt: res.text.slice(0, 200) });
       if (isPrimary(provider)) { provider = escalation; escalated = true; history.push({ note: 'malformed primary output, escalated' }); continue; }
+      end('provider_failure', 'escalation returned malformed decision');
       throw new Error('agent loop: escalation provider returned malformed decision');
     }
 
-    if (decision.action === 'complete') return { decision, toolCalls, iterations: i, escalated };
+    rec({ kind: 'decision', decision });
+    if (decision.action === 'complete') { end(escalated ? 'escalated' : 'completed'); return { decision, toolCalls, iterations: i, escalated, sessionId: session?.id }; }
     if (decision.action === 'escalate') {
       provider = escalation; escalated = true;
       history.push({ escalated: decision.reason, context: (decision as { context?: unknown }).context });
+      rec({ kind: 'escalation', reason: decision.reason });
       continue;
     }
-    if (decision.action === 'revise') { history.push({ revised: decision.note }); continue; }
+    if (decision.action === 'revise') { history.push({ revised: decision.note }); rec({ kind: 'revision', note: decision.note }); continue; }
     if (decision.action === 'call_tool') {
-      if (!knownTools.has(decision.tool)) { history.push({ rejectedUnknownTool: decision.tool }); continue; }
+      if (!knownTools.has(decision.tool)) { history.push({ rejectedUnknownTool: decision.tool }); rec({ kind: 'rejected_tool', tool: decision.tool }); continue; }
       // Saturation guard: identical re-call means the model has nothing new;
       // finish with the last result instead of looping or escalating.
       const sig = `${decision.tool}:${JSON.stringify(decision.args)}`;
       if (sig === lastCallSig && lastToolResult !== undefined) {
-        return { decision: { action: 'complete', result: lastToolResult, reasoning: 'repeated identical call — task saturated' }, toolCalls, iterations: i, escalated };
+        end(escalated ? 'escalated' : 'completed', 'saturated');
+        return { decision: { action: 'complete', result: lastToolResult, reasoning: 'repeated identical call — task saturated' }, toolCalls, iterations: i, escalated, sessionId: session?.id };
       }
       lastCallSig = sig;
-      if (++toolCalls > limits.maxToolCalls) throw new Error('agent loop: tool call limit exceeded');
+      if (++toolCalls > limits.maxToolCalls) { end('tool_call_limit'); throw new Error('agent loop: tool call limit exceeded'); }
+      rec({ kind: 'tool_call', tool: decision.tool, args: decision.args });
       try {
         const result = await input.executor.executeTool(decision.tool, decision.args, input.signal);
         lastToolResult = result;
         history.push({ tool: decision.tool, result });
+        rec({ kind: 'tool_result', tool: decision.tool, result });
       } catch (e) {
-        history.push({ tool: decision.tool, error: e instanceof Error ? e.message : String(e) });
+        const errMsg = e instanceof Error ? e.message : String(e);
+        history.push({ tool: decision.tool, error: errMsg });
+        rec({ kind: 'tool_result', tool: decision.tool, error: errMsg });
       }
     }
   }
+  end('iteration_limit');
   throw new Error('agent loop: iteration limit exceeded');
   } finally {
     needleApi?.stopServer();

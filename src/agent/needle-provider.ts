@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
+import { createServer } from 'node:net';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,6 +47,7 @@ function fail(code: string, msg: string, retryable = false): never {
 export class NeedleProvider implements ModelProvider {
   private server?: ChildProcess;
   private serverToolsHash?: string;
+  private activePort?: number;
   private toolsFile?: string;
   constructor(private config: NeedleConfig = needleConfigFromEnv()) {}
 
@@ -70,7 +72,7 @@ export class NeedleProvider implements ModelProvider {
     if (this.config.useServer) {
       await this.ensureServer(tools);
       const parsed = await this.postJson('/complete', { input: req.systemPrompt ? `${req.systemPrompt}\n\n${req.prompt}` : req.prompt });
-      return { text: JSON.stringify(parsed), modelUsed: `needle2:server:${this.config.servePort}`, latencyMs: Date.now() - t0 };
+      return { text: JSON.stringify(parsed), modelUsed: `needle2:server:${this.activePort}`, latencyMs: Date.now() - t0 };
     }
     return this.generateOneShot(tools, req, t0);
   }
@@ -111,35 +113,31 @@ export class NeedleProvider implements ModelProvider {
   /** Persistent `--serve` mode: one engine process per toolset, HTTP loopback. */
   private async ensureServer(tools: unknown[]): Promise<void> {
     const hash = JSON.stringify(tools).length + ':' + (tools as Array<{ name: string }>).map(t => t.name).join(',');
-    if (this.server && !this.server.killed && this.serverToolsHash === hash) return;
+    if (this.server && !this.server.killed && this.serverToolsHash === hash && this.activePort) {
+      try { await this.postJson('/reset', {}); return; } catch { /* stale — respawn below */ }
+    }
     this.stopServer();
+    await new Promise(r => setTimeout(r, 150)); // let the old port release
+    this.activePort = await pickFreePort(this.config.servePort);
     this.toolsFile = join(tmpdir(), `needle-tools-${Date.now()}.json`);
     writeFileSync(this.toolsFile, JSON.stringify(tools));
-    const args = ['--tools', this.toolsFile, '--serve', '--port', String(this.config.servePort)];
+    const args = ['--tools', this.toolsFile, '--serve', '--port', String(this.activePort)];
     if (this.config.toolIndexPath) args.push('--tool-index', this.config.toolIndexPath);
     this.server = spawn(this.config.enginePath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     this.serverToolsHash = hash;
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('needle server start timeout')), 10000);
-      const onData = () => { clearTimeout(timer); resolve(); };
-      this.server!.stdout?.once('data', onData);
-      this.server!.stderr?.once('data', onData);
-      this.server!.once('error', (e) => { clearTimeout(timer); reject(e); });
-      this.server!.once('exit', (code) => { clearTimeout(timer); reject(new Error(`needle server exited ${code}`)); });
-    }).catch(async () => {
-      // Fall back to readiness probe: server may not log on stdout.
-      for (let i = 0; i < 20; i++) {
-        try { await this.postJson('/reset', {}); return; } catch { await new Promise(r => setTimeout(r, 250)); }
-      }
-      throw new Error('needle server not responding on port ' + this.config.servePort);
-    });
+    for (let i = 0; i < 40; i++) {
+      if (this.server.killed || this.server.exitCode !== null) throw new Error('needle server exited during startup');
+      try { await this.postJson('/reset', {}); return; } catch { await new Promise(r => setTimeout(r, 250)); }
+    }
+    this.stopServer();
+    throw new Error('needle server not responding on port ' + this.activePort);
   }
 
   private postJson(path: string, body: unknown, retried = false): Promise<unknown> {
     const data = JSON.stringify(body);
     return new Promise((resolve, reject) => {
       const req = httpRequest({
-        host: '127.0.0.1', port: this.config.servePort, path, method: 'POST',
+        host: '127.0.0.1', port: this.activePort ?? this.config.servePort, path, method: 'POST',
         agent: false,
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), 'Connection': 'close' },
         timeout: this.config.timeoutMs,
@@ -168,6 +166,29 @@ export class NeedleProvider implements ModelProvider {
     try { this.server?.kill(); } catch { /* best effort */ }
     this.server = undefined;
     this.serverToolsHash = undefined;
+    this.activePort = undefined;
     if (this.toolsFile) { try { unlinkSync(this.toolsFile); } catch { /* best effort */ } this.toolsFile = undefined; }
   }
+}
+
+/** Prefer the configured port (back-compat), else any free loopback port. */
+function pickFreePort(preferred: number): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const srv = createServer();
+    srv.once('error', () => resolve(0)); // 0 = let the engine pick is unsupported; fall through to scan
+    srv.listen(preferred, '127.0.0.1', () => {
+      srv.close(() => resolve(preferred));
+    });
+  }).then(async (port) => {
+    if (port !== 0) return port;
+    return new Promise<number>((resolve, reject) => {
+      const srv = createServer();
+      srv.once('error', reject);
+      srv.listen(0, '127.0.0.1', () => {
+        const addr = srv.address();
+        const p = typeof addr === 'object' && addr ? addr.port : 0;
+        srv.close(() => resolve(p));
+      });
+    });
+  });
 }

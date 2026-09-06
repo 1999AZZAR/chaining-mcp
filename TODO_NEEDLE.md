@@ -34,10 +34,13 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Saturation guard: identical re-call → `complete` with last result
 - [ ] Model variance across identical prompts (0.97 vs 0.005 conf) — needs benchmark + finetune; loop handles via escalation
 
-## Milestone 4 — Sequential thinking → agent state
-- [ ] Keep state machinery; add `AgentState` (observations, decisions, tool calls/results, revisions, branches, escalation, termination)
-- [ ] Bounded history + session/workflow association
-- [ ] Legacy MCP tools stay as compat shims
+## Milestone 4 — Sequential thinking → agent state [x] live, 25/25 green
+- [x] `src/agent/state.ts` — `AgentStateManager`: sessions, typed events, bounded history + drop count, termination reasons, `tail()`, `stats()`, workflow association
+- [x] `agentRun(state: {manager, sessionId?, workflowId?})` records decisions/calls/results/revisions/escalations/rejections/malformed + termination; absent = zero behavior change
+- [x] `tests/agent/state.test.mjs` — 7 tests (lifecycle, bounds, tail, workflow grouping, limit-breach termination)
+- [x] Fixed live flakes: per-instance free serve ports (was: fixed 18080 → cross-test bind conflicts), startup readiness probe
+- [ ] Legacy `SequentialThinkingManager` stays as compat shim (untouched)
+- [ ] Expose session snapshot via MCP tool (Milestone 8)
 
 ## Milestone 5 — Agentic workflow loop
 - [ ] `WorkflowOrchestrator.executeTool()` for agent runtime
@@ -52,8 +55,8 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
 - [ ] Keep deterministic validation/safety/fast paths
 
-## Benchmarks (`tests/agent/`) [x] suite live, 18/18 green
-- [x] `npm run test:agent` — 13 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery)
+## Benchmarks (`tests/agent/`) [x] suite live, 25/25 green
+- [x] `npm run test:agent` — 20 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state)
 - [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 5 engine tests (health, call shape+confidence, planTask, serve multi-turn)
 - [ ] Replanning / multi-observation / circular-dependency cases
 - [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)
