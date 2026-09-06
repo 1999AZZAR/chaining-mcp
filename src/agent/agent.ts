@@ -2,6 +2,7 @@ import { AgentDecisionSchema, AgentPlanSchema, type AgentDecision, type AgentPla
 import { NeedleProvider } from './needle-provider.js';
 import { OpenRouterProvider } from './openrouter-provider.js';
 import type { AgentStateManager, TerminationReason } from './state.js';
+import { EscalationController, escalationPolicyFromEnv, type EscalationPolicy, type EscalationRecord, type EscalationTrigger } from './escalation.js';
 
 export interface AgentLoopLimits { maxIterations: number; maxToolCalls: number; maxExecutionMs: number }
 export interface AgentToolExecutor { executeTool(tool: string, args: unknown, signal?: AbortSignal): Promise<unknown> }
@@ -15,6 +16,8 @@ export interface AgentRunInput {
   providers?: { primary?: ModelProvider; escalation?: ModelProvider };
   /** Opt-in agent state recording (Milestone 4). Absent = no recording. */
   state?: { manager: AgentStateManager; sessionId?: string; workflowId?: string };
+  /** Escalation budget override (Milestone 6). Absent = env/defaults. */
+  escalationPolicy?: EscalationPolicy;
 }
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
@@ -51,7 +54,7 @@ function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], his
  * Milestone 2: Needle-first agent loop with OpenRouter escalation.
  * Parses + validates every decision via AgentDecisionSchema; rejects unknown tools.
  */
-export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean; sessionId?: string }> {
+export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean; sessionId?: string; escalations: EscalationRecord[] }> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const t0 = Date.now();
   const needle = input.providers?.primary instanceof NeedleProvider
@@ -63,22 +66,12 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const knownTools = new Set(input.toolSchemas.map(t => t.name));
   const history: unknown[] = [];
   let toolCalls = 0;
-  let escalated = false;
   let lastCallSig: string | undefined;
   let lastToolResult: unknown;
 
   const isPrimary = (p: ModelProvider): boolean => p === primary;
+  const esc = new EscalationController(input.escalationPolicy ?? escalationPolicyFromEnv());
   let provider: ModelProvider = primary;
-  const primaryHealth: { ok: boolean; detail?: string } = await primary.health().catch(() => ({ ok: false, detail: 'health check threw' }));
-  if (!primaryHealth.ok) {
-    provider = escalation;
-    escalated = true;
-    history.push({ note: 'primary unavailable, escalated', detail: primaryHealth.detail });
-  }
-
-  try {
-
-  if (isPrimary(provider)) await needleApi?.resetConversation().catch(() => undefined);
   const stated = input.state;
   const session = stated ? stated.manager.create(input.task, stated.sessionId, stated.workflowId) : undefined;
   const rec = (e: Parameters<AgentStateManager['record']>[1]): void => {
@@ -87,6 +80,26 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const end = (reason: TerminationReason, detail?: string): void => {
     if (stated && session) try { stated.manager.terminate(session.id, reason, detail); } catch { /* best effort */ }
   };
+  /** Single choke point for every provider switch: budgeted, recorded, one-way. */
+  const doEscalate = (trigger: EscalationTrigger, detail?: string): void => {
+    const record = esc.escalate(trigger, detail); // throws when budget spent
+    provider = escalation;
+    history.push({ escalated: trigger, detail, at: record.at });
+    rec({ kind: 'escalation', reason: `${trigger}${detail ? ': ' + detail : ''}`, provider: 'escalation' });
+  };
+  const primaryHealth: { ok: boolean; detail?: string } = await primary.health().catch(() => ({ ok: false, detail: 'health check threw' }));
+  if (!primaryHealth.ok) {
+    try {
+      doEscalate('unhealthy_primary', primaryHealth.detail);
+    } catch (e) {
+      end('provider_failure', e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
+
+  try {
+
+  if (isPrimary(provider)) await needleApi?.resetConversation().catch(() => undefined);
   for (let i = 1; i <= limits.maxIterations; i++) {
     if (Date.now() - t0 > limits.maxExecutionMs) { end('time_limit'); throw new Error('agent loop: execution time limit exceeded'); }
     if (input.signal?.aborted) { end('aborted'); throw new Error('agent loop: aborted'); }
@@ -111,7 +124,15 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       res = await provider.generate(req);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (provider !== escalation) { provider = escalation; escalated = true; history.push({ note: 'primary provider failed, escalated', error: msg }); rec({ kind: 'escalation', reason: 'primary provider failed', provider: 'escalation' }); continue; }
+      if (provider !== escalation) {
+        try {
+          doEscalate('provider_failure', msg);
+        } catch (e) {
+          end('provider_failure', e instanceof Error ? e.message : String(e));
+          throw e;
+        }
+        continue;
+      }
       end('provider_failure', msg);
       throw new Error(`agent loop: escalation provider failed after primary (${history.length} prior observations): ${msg}`);
     }
@@ -141,17 +162,32 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     } catch {
       history.push({ malformedOutput: res.text.slice(0, 500) });
       rec({ kind: 'malformed_output', excerpt: res.text.slice(0, 200) });
-      if (isPrimary(provider)) { provider = escalation; escalated = true; history.push({ note: 'malformed primary output, escalated' }); continue; }
+      if (isPrimary(provider)) {
+        try {
+          doEscalate('malformed_output', res.text.slice(0, 200));
+        } catch (e) {
+          end('provider_failure', e instanceof Error ? e.message : String(e));
+          throw e;
+        }
+        continue;
+      }
       end('provider_failure', 'escalation returned malformed decision');
       throw new Error('agent loop: escalation provider returned malformed decision');
     }
 
     rec({ kind: 'decision', decision });
-    if (decision.action === 'complete') { end(escalated ? 'escalated' : 'completed'); return { decision, toolCalls, iterations: i, escalated, sessionId: session?.id }; }
+    if (decision.action === 'complete') { end(esc.escalated ? 'escalated' : 'completed'); return { decision, toolCalls, iterations: i, escalated: esc.escalated, sessionId: session?.id, escalations: esc.trail }; }
     if (decision.action === 'escalate') {
-      provider = escalation; escalated = true;
+      const trigger: EscalationTrigger = /refus/i.test(decision.reason) ? 'refusal'
+        : /confidence/i.test(decision.reason) ? 'low_confidence'
+        : /malformed/i.test(decision.reason) ? 'malformed_output' : 'provider_failure';
+      try {
+        doEscalate(trigger, decision.reason);
+      } catch (e) {
+        end('escalated', e instanceof Error ? e.message : String(e));
+        throw e;
+      }
       history.push({ escalated: decision.reason, context: (decision as { context?: unknown }).context });
-      rec({ kind: 'escalation', reason: decision.reason });
       continue;
     }
     if (decision.action === 'revise') { history.push({ revised: decision.note }); rec({ kind: 'revision', note: decision.note }); continue; }
@@ -161,8 +197,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       // finish with the last result instead of looping or escalating.
       const sig = `${decision.tool}:${JSON.stringify(decision.args)}`;
       if (sig === lastCallSig && lastToolResult !== undefined) {
-        end(escalated ? 'escalated' : 'completed', 'saturated');
-        return { decision: { action: 'complete', result: lastToolResult, reasoning: 'repeated identical call — task saturated' }, toolCalls, iterations: i, escalated, sessionId: session?.id };
+        end(esc.escalated ? 'escalated' : 'completed', 'saturated');
+        return { decision: { action: 'complete', result: lastToolResult, reasoning: 'repeated identical call — task saturated' }, toolCalls, iterations: i, escalated: esc.escalated, sessionId: session?.id, escalations: esc.trail };
       }
       lastCallSig = sig;
       if (++toolCalls > limits.maxToolCalls) { end('tool_call_limit'); throw new Error('agent loop: tool call limit exceeded'); }
@@ -170,12 +206,23 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       try {
         const result = await input.executor.executeTool(decision.tool, decision.args, input.signal);
         lastToolResult = result;
+        esc.noteToolResult(true);
         history.push({ tool: decision.tool, result });
         rec({ kind: 'tool_result', tool: decision.tool, result });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         history.push({ tool: decision.tool, error: errMsg });
         rec({ kind: 'tool_result', tool: decision.tool, error: errMsg });
+        // Repeated failures escalate only when a switch is still available;
+        // an already-escalated run records and continues — nowhere else to go.
+        if (esc.noteToolResult(false) && provider !== escalation) {
+          try {
+            doEscalate('repeated_tool_failure', `${decision.tool}: ${errMsg}`.slice(0, 200));
+          } catch (budget) {
+            end('provider_failure', budget instanceof Error ? budget.message : String(budget));
+            throw budget;
+          }
+        }
       }
     }
   }

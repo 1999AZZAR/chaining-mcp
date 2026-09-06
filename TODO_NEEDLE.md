@@ -53,9 +53,13 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [ ] Bind `RequestHandlers.handleToolCall` as transport in `server.ts` (wiring, Milestone 8)
 - [ ] `execute_workflow` MCP tool routes plans through `runAgentWorkflow` when agent enabled (Milestone 8)
 
-## Milestone 6 — OpenRouter escalation policy
-- [ ] Explicit triggers (low confidence, complexity, repeated failure, malformed output, user request)
-- [ ] Escalation budget + loop prevention + reason/latency/token logging
+## Milestone 6 — OpenRouter escalation policy [x] live, 44/44 green
+- [x] `src/agent/escalation.ts` — `EscalationController`: budgeted one-way trip, triggers (low_confidence, refusal, malformed_output, provider_failure, repeated_tool_failure, unhealthy_primary), trail with timestamps
+- [x] Single choke point `doEscalate()` — every switch recorded to history + state; budget-spent ends the run instead of looping
+- [x] Repeated tool failures escalate mid-run (threshold `AGENT_REPEATED_FAILURE_THRESHOLD`, default 3; success resets)
+- [x] `AGENT_ESCALATION_ENABLED=false` / `AGENT_MAX_ESCALATIONS` honored from env, overridable per-run
+- [x] Run result carries `escalations[]` trail (reason, latency context, provider)
+- [x] `tests/agent/escalation.test.mjs` — 8 tests (budget, threshold, no ping-pong, refusal mapping, disabled flag)
 
 ## Milestone 7 — Remove heuristic cognition (only after benchmark wins)
 - [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
@@ -70,7 +74,11 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 ## Env (target)
 ```
 MITOSIS_AGENT_ENABLED=true / MITOSIS_AGENT_PROVIDER=needle
-NEEDLE_MODEL_PATH=... NEEDLE_MAX_TOKENS=... NEEDLE_TIMEOUT_MS=...
+NEEDLE_ENGINE_PATH=assets/needle/needle
+NEEDLE_MODEL_PATH=assets/needle/needle2.cact
+NEEDLE_CONFIDENCE_THRESHOLD=0.6
+NEEDLE_PORT=18080 / NEEDLE_USE_SERVER=true
 AGENT_ESCALATION_ENABLED=true / AGENT_ESCALATION_PROVIDER=openrouter
+AGENT_MAX_ESCALATIONS=1 / AGENT_REPEATED_FAILURE_THRESHOLD=3
 OPENROUTER_API_KEY=... OPENROUTER_MODEL=...
 ```
