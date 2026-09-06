@@ -24,6 +24,16 @@ function compact(value: unknown, max = 160): string {
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
+/** True when text carries the native Needle contract ({type, function_calls}). */
+function looksNative(text: string): boolean {
+  try {
+    const p = JSON.parse(text);
+    return !!p && typeof p.type === 'string' && Array.isArray((p as { function_calls?: unknown }).function_calls);
+  } catch {
+    return false;
+  }
+}
+
 function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], history: unknown[]): string {
   const toolList = tools.map(t => `- ${t.name}${t.description ? ': ' + compact(t.description, 80) : ''}`).slice(0, 20).join('\n');
   const trail = (history.slice(-6) as Array<Record<string, unknown>>).map((h, i) => {
@@ -86,7 +96,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     // Anything else (prose wrappers) degrades its confidence.
     const lastResult = [...history].reverse().find((h): h is { tool: unknown; result: unknown } =>
       typeof h === 'object' && h !== null && 'tool' in h && 'result' in h);
-    const prompt = (isPrimary(provider) && needleApi && lastResult)
+    const prompt = (isPrimary(provider) && lastResult)
       ? `Result of ${String((lastResult as { tool: unknown }).tool)}: ${compact((lastResult as { result: unknown }).result, 400)}\nTask reminder: ${compact(input.task, 200)}`
       : buildObservation(input.task, input.toolSchemas, history);
     const req: ModelRequest = {
@@ -105,9 +115,11 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       end('provider_failure', msg);
       throw new Error(`agent loop: escalation provider failed after primary (${history.length} prior observations): ${msg}`);
     }
-    // Needle native contract → AgentDecision translation (primary only when it is a NeedleProvider).
+    // Native Needle contract → AgentDecision translation. Applies to the real
+    // NeedleProvider and to any primary whose output carries the native shape
+    // (type + function_calls); confidence gating only when a Needle API exists.
     let rawText = res.text;
-    if (isPrimary(provider) && needleApi) {
+    if (isPrimary(provider) && looksNative(rawText)) {
       try {
         const native = JSON.parse(rawText);
         const calls = native.function_calls || [];
@@ -115,7 +127,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
           rawText = JSON.stringify({ action: 'complete', result: native.reasoning || calls, reasoning: native.reasoning });
         } else if (!calls.length) {
           rawText = JSON.stringify({ action: 'escalate', reason: 'needle refused: no declared tool serves this request', context: native });
-        } else if (!needleApi.isConfident(res.text)) {
+        } else if (needleApi && !needleApi.isConfident(res.text)) {
           rawText = JSON.stringify({ action: 'escalate', reason: `needle confidence ${needleApi.confidenceOf(res.text)} below threshold`, context: native });
         } else {
           rawText = JSON.stringify({ action: 'call_tool', tool: calls[0].name, args: calls[0].arguments || {}, reasoning: native.reasoning });
@@ -211,7 +223,7 @@ export async function planTask(task: string, availableToolsSummary: string, sign
       if (plan.steps.length) return plan;
     }
   } catch { /* fall through to escalation */ }
-  finally { needle.stopServer(); }
+  finally { (needle as Partial<NeedleProvider>).stopServer?.(); }
 
   const escalation = providers?.escalation ?? new OpenRouterProvider();
   try {

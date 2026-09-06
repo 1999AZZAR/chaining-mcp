@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { WorkflowStep, WorkflowOrchestratorInput } from '../types.js';
 
+/**
+ * Milestone 5 transport seam. When set (e.g. bound to
+ * RequestHandlers.handleToolCall), steps execute against real tool
+ * implementations. When unset, the legacy placeholder runs — existing
+ * behavior is unchanged.
+ */
+export type MCPTransport = (
+  serverName: string,
+  toolName: string,
+  parameters: Record<string, any>,
+  signal?: AbortSignal,
+) => Promise<any>;
+
 export interface WorkflowExecutionResult {
   workflowId: string;
   status: 'completed' | 'failed' | 'running' | 'cancelled';
@@ -28,8 +41,38 @@ export interface WorkflowStepResult {
 
 export class WorkflowOrchestrator {
   private activeWorkflows = new Map<string, WorkflowExecutionResult>();
+  private transport?: MCPTransport;
+  /** Registry guard: when set, agent-driven executeTool rejects anything not listed. */
+  private allowedTools?: Set<string>;
 
-  async executeWorkflow(input: WorkflowOrchestratorInput): Promise<WorkflowExecutionResult> {
+  /** Bind the real MCP transport (e.g. RequestHandlers.handleToolCall). */
+  setTransport(transport: MCPTransport): void {
+    this.transport = transport;
+  }
+
+  /** Restrict agent-driven tool calls to an explicit registry. */
+  setAllowedTools(tools: string[]): void {
+    this.allowedTools = new Set(tools);
+  }
+
+  clearAllowedTools(): void {
+    this.allowedTools = undefined;
+  }
+
+  /**
+   * Safe single-tool capability for the agent runtime: registry-guarded,
+   * transported, cancellable. Retries are NOT applied here — the agent loop
+   * decides re-attempts from observations; workflow steps use step config.
+   */
+  async executeTool(toolName: string, parameters: Record<string, any> = {}, opts: { serverName?: string; signal?: AbortSignal } = {}): Promise<any> {
+    if (opts.signal?.aborted) throw new Error(`tool '${toolName}' aborted before execution`);
+    if (this.allowedTools && !this.allowedTools.has(toolName)) {
+      throw new Error(`tool '${toolName}' is not in the agent tool registry`);
+    }
+    return this.callMCPServerTool(opts.serverName || 'local', toolName, parameters, opts.signal);
+  }
+
+  async executeWorkflow(input: WorkflowOrchestratorInput, signal?: AbortSignal): Promise<WorkflowExecutionResult> {
     const startTime = Date.now();
     const workflowId = input.workflowId;
 
@@ -51,20 +94,27 @@ export class WorkflowOrchestrator {
 
       // Execute steps in order
       for (const stepGroup of executionPlan) {
-        const stepPromises = stepGroup.map(step => this.executeStep(step, input, execution));
+        if (signal?.aborted) {
+          execution.status = 'cancelled';
+          execution.error = 'workflow cancelled';
+          break;
+        }
+        const stepPromises = stepGroup.map(step => this.executeStep(step, input, execution, signal));
         await Promise.all(stepPromises);
       }
 
-      // Check if all steps completed successfully
-      const allCompleted = execution.steps.every(step => step.status === 'completed');
-      const anyFailed = execution.steps.some(step => step.status === 'failed');
+      // Check if all steps completed successfully (unless cancelled mid-run)
+      if (execution.status !== 'cancelled') {
+        const allCompleted = execution.steps.every(step => step.status === 'completed');
+        const anyFailed = execution.steps.some(step => step.status === 'failed');
 
-      if (allCompleted && !anyFailed) {
-        execution.status = 'completed';
-        execution.overallResult = this.aggregateResults(execution.steps);
-      } else {
-        execution.status = 'failed';
-        execution.error = 'One or more workflow steps failed';
+        if (allCompleted && !anyFailed) {
+          execution.status = 'completed';
+          execution.overallResult = this.aggregateResults(execution.steps);
+        } else {
+          execution.status = 'failed';
+          execution.error = 'One or more workflow steps failed';
+        }
       }
 
     } catch (error) {
@@ -122,7 +172,8 @@ export class WorkflowOrchestrator {
   private async executeStep(
     step: WorkflowStep,
     workflow: WorkflowOrchestratorInput,
-    execution: WorkflowExecutionResult
+    execution: WorkflowExecutionResult,
+    signal?: AbortSignal,
   ): Promise<void> {
     const stepResult: WorkflowStepResult = {
       stepId: step.id,
@@ -134,35 +185,42 @@ export class WorkflowOrchestrator {
     };
 
     execution.steps.push(stepResult);
+    const maxAttempts = 1 + (step.retryOnFailure ? (step.maxRetries ?? 1) : 0);
 
-    try {
-      // Resolve parameters with variable substitution and output mapping
-      const resolvedParams = this.resolveParameters(step, execution.steps, workflow.variables);
-
-      // Execute the tool (this is a placeholder - in reality, this would call the MCP server)
-      const result = await this.callMCPServerTool(step.serverName, step.toolName, resolvedParams);
-
-      stepResult.status = 'completed';
-      stepResult.result = result;
-      stepResult.completedAt = new Date().toISOString();
-      stepResult.executionTime = stepResult.completedAt && stepResult.startedAt
-        ? new Date(stepResult.completedAt).getTime() - new Date(stepResult.startedAt).getTime()
-        : 0;
-
-    } catch (error) {
-      stepResult.status = 'failed';
-      stepResult.error = error instanceof Error ? error.message : 'Unknown error';
-      stepResult.completedAt = new Date().toISOString();
-
-      // Handle retries if configured
-      if (step.retryOnFailure && (!step.maxRetries || (stepResult.retryCount || 0) < step.maxRetries)) {
-        stepResult.retryCount = (stepResult.retryCount || 0) + 1;
-        // In a real implementation, you'd retry the step here
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (signal?.aborted) {
+        stepResult.status = 'failed';
+        stepResult.error = 'cancelled';
+        stepResult.completedAt = new Date().toISOString();
+        if (workflow.failFast) throw new Error('workflow cancelled');
+        return;
       }
+      try {
+        // Resolve parameters with variable substitution and output mapping
+        const resolvedParams = this.resolveParameters(step, execution.steps, workflow.variables);
 
-      // If failFast is enabled, this would stop the entire workflow
-      if (workflow.failFast) {
-        throw error;
+        const result = await this.callMCPServerTool(step.serverName, step.toolName, resolvedParams, signal);
+
+        stepResult.status = 'completed';
+        stepResult.result = result;
+        stepResult.retryCount = attempt - 1;
+        stepResult.completedAt = new Date().toISOString();
+        stepResult.executionTime = stepResult.completedAt && stepResult.startedAt
+          ? new Date(stepResult.completedAt).getTime() - new Date(stepResult.startedAt).getTime()
+          : 0;
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        stepResult.retryCount = attempt - 1;
+        if (attempt >= maxAttempts) {
+          stepResult.status = 'failed';
+          stepResult.error = message;
+          stepResult.completedAt = new Date().toISOString();
+          // If failFast is enabled, stop the entire workflow
+          if (workflow.failFast) throw error;
+          return;
+        }
+        // Otherwise fall through and actually retry.
       }
     }
   }
@@ -204,14 +262,14 @@ export class WorkflowOrchestrator {
   private async callMCPServerTool(
     serverName: string,
     toolName: string,
-    parameters: Record<string, any>
+    parameters: Record<string, any>,
+    signal?: AbortSignal,
   ): Promise<any> {
-    // This is a placeholder implementation
-    // In a real implementation, this would:
-    // 1. Find the MCP server by name
-    // 2. Establish connection to the server
-    // 3. Call the tool with the provided parameters
-    // 4. Return the result
+    if (signal?.aborted) throw new Error(`tool '${toolName}' aborted`);
+    // Real transport when bound (Milestone 5); legacy placeholder otherwise.
+    if (this.transport) {
+      return this.transport(serverName, toolName, parameters, signal);
+    }
 
     // Instant execution for local runner
     await new Promise(resolve => setTimeout(resolve, 5));

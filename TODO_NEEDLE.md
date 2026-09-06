@@ -42,10 +42,16 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [ ] Legacy `SequentialThinkingManager` stays as compat shim (untouched)
 - [ ] Expose session snapshot via MCP tool (Milestone 8)
 
-## Milestone 5 — Agentic workflow loop
-- [ ] `WorkflowOrchestrator.executeTool()` for agent runtime
-- [ ] Real MCP transport in `callMCPServerTool()` (currently placeholder)
-- [ ] Real retries; cancellation into active calls; registry-guarded tool names
+## Milestone 5 — Agentic workflow loop [x] live, 36/36 green
+- [x] `MCPTransport` seam: `setTransport()` (e.g. `RequestHandlers.handleToolCall`); unset = legacy placeholder, zero behavior change
+- [x] Real retry execution (`retryOnFailure` + `maxRetries` actually re-run; `retryCount` real)
+- [x] Cancellation via `AbortSignal` (per-step checks, stops between batches, `cancelled` survives aggregation — fixed overwrite bug)
+- [x] `executeTool()` agent capability: registry-guarded, transported, pre-execution abort check
+- [x] `src/agent/workflow.ts`: `planToWorkflow()` + `runAgentWorkflow()` (plan → registry → agent↔orchestrator loop with state)
+- [x] Native-shape translation generalized (any primary emitting `{type, function_calls}`; confidence gate only for real Needle)
+- [x] `tests/agent/workflow.test.mjs` — 11 tests (transport, retries, cancel, registry, end-to-end, escape-proof)
+- [ ] Bind `RequestHandlers.handleToolCall` as transport in `server.ts` (wiring, Milestone 8)
+- [ ] `execute_workflow` MCP tool routes plans through `runAgentWorkflow` when agent enabled (Milestone 8)
 
 ## Milestone 6 — OpenRouter escalation policy
 - [ ] Explicit triggers (low confidence, complexity, repeated failure, malformed output, user request)
@@ -55,8 +61,8 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
 - [ ] Keep deterministic validation/safety/fast paths
 
-## Benchmarks (`tests/agent/`) [x] suite live, 25/25 green
-- [x] `npm run test:agent` — 20 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state)
+## Benchmarks (`tests/agent/`) [x] suite live, 36/36 green
+- [x] `npm run test:agent` — 31 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, workflow/transport/registry)
 - [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 5 engine tests (health, call shape+confidence, planTask, serve multi-turn)
 - [ ] Replanning / multi-observation / circular-dependency cases
 - [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)
