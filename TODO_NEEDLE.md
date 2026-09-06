@@ -2,27 +2,30 @@
 
 Base: `main` @ `b22a843`. Main stays stable; all work here.
 
-## Milestone 1 — Needle provider [~] engine bundled, health live
+## Milestone 1 — Needle provider [x] engine bundled, serve mode live
 - [x] `ModelProvider` seam (`src/agent/schemas.ts`)
 - [x] `NeedleProvider` spawns bundled CLI (`src/agent/needle-provider.ts`)
 - [x] `OpenRouterProvider` adapter, no behavior change
 - [x] `scripts/fetch-needle.mjs` + `npm run needle:fetch` (engine + `needle2.cact`, gitignored)
-- [x] Engine smoke-tested (get_weather/Jakarta, conf 0.84)
-- [ ] `--serve` persistent mode (avoid per-turn spawn cost) + `NEEDLE_TOOL_INDEX_PATH` for large catalogues
+- [x] Engine smoke-tested (0.84 one-shot, 0.77 via serve)
+- [x] Persistent `--serve` mode (`NEEDLE_PORT`, `NEEDLE_USE_SERVER=false` → one-shot)
+- [ ] `NEEDLE_TOOL_INDEX_PATH` for large catalogues
 - [ ] Diagnostics via MCP status tool
 - [ ] Tuned `.cact` flow (`NEEDLE_MODEL_PATH`) once we finetune
 
-## Milestone 2 — Agent decision protocol [x] scaffolded
+## Milestone 2 — Agent decision protocol [x] verified live
 - [x] Strict `AgentDecision` zod schema + validation
-- [x] `agentRun()` loop (limits, unknown-tool reject, escalation)
-- [ ] Real Needle output parsing once runtime bound
+- [x] `agentRun()` loop — live: call→execute→escalate path confirmed
+- [x] Native→decision translation (refusal→escalate, respond→complete, low-conf→escalate)
+- [x] Escalation failure carries Needle observation count
 - [ ] `tests/agent/` limits + malformed-output tests
 
-## Milestone 3 — Replace `decomposeTask()`
-- [ ] Needle → validated `AgentPlan` (tool-level, not just category)
-- [ ] Single-step plans for trivial tasks; parallelizable steps
-- [ ] Replan after tool observations
-- [ ] Remove hardcoded `analysis → utility → validation` fallback (only after benchmark)
+## Milestone 3 — Replace `decomposeTask()` [~] Needle-first planner live
+- [x] `planTask()` — constrained `define_step` pseudo-tool → validated `AgentPlan`
+- [x] Fallback chain: Needle → OpenRouter → legacy heuristic
+- [ ] Wire `LLMManager.decomposeTask()` callers to `planTask()`
+- [ ] Single-step plans for trivial tasks; parallelizable steps (quality tuning)
+- [ ] Remove hardcoded fallback (only after benchmark)
 
 ## Milestone 4 — Sequential thinking → agent state
 - [ ] Keep state machinery; add `AgentState` (observations, decisions, tool calls/results, revisions, branches, escalation, termination)
