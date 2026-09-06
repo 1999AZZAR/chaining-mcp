@@ -23,9 +23,16 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 ## Milestone 3 — Replace `decomposeTask()` [~] Needle-first planner live
 - [x] `planTask()` — constrained `define_step` pseudo-tool → validated `AgentPlan`
 - [x] Fallback chain: Needle → OpenRouter → legacy heuristic
-- [ ] Wire `LLMManager.decomposeTask()` callers to `planTask()`
+- [x] `llm_decompose_task` handler routes via `planTask()` when `MITOSIS_AGENT_ENABLED=true` (legacy shape preserved, `source` field added)
 - [ ] Single-step plans for trivial tasks; parallelizable steps (quality tuning)
 - [ ] Remove hardcoded fallback (only after benchmark)
+
+## Loop reliability fixes (live findings)
+- [x] Compact observations (was: full history JSON blob → confidence collapse)
+- [x] Result-forward turns per Needle contract (feed raw result, not prose wrapper)
+- [x] HTTP keep-alive fix (`Connection: close` + one retry; engine hung 2nd request)
+- [x] Saturation guard: identical re-call → `complete` with last result
+- [ ] Model variance across identical prompts (0.97 vs 0.005 conf) — needs benchmark + finetune; loop handles via escalation
 
 ## Milestone 4 — Sequential thinking → agent state
 - [ ] Keep state machinery; add `AgentState` (observations, decisions, tool calls/results, revisions, branches, escalation, termination)

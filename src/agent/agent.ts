@@ -14,9 +14,22 @@ export interface AgentRunInput {
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
 
+function compact(value: unknown, max = 160): string {
+  const s = typeof value === 'string' ? value : JSON.stringify(value);
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
 function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], history: unknown[]): string {
-  const toolList = tools.map(t => `- ${t.name}${t.description ? ': ' + t.description : ''}`).slice(0, 60).join('\n');
-  return `Task: ${task}\n\nAvailable tools:\n${toolList}\n\nHistory (most recent last):\n${JSON.stringify(history.slice(-10))}\n\nRespond with exactly one JSON AgentDecision: {"action":"call_tool","tool":"...","args":{}} | {"action":"complete","result":...} | {"action":"escalate","reason":"..."} | {"action":"revise","note":"..."}.`;
+  const toolList = tools.map(t => `- ${t.name}${t.description ? ': ' + compact(t.description, 80) : ''}`).slice(0, 20).join('\n');
+  const trail = (history.slice(-6) as Array<Record<string, unknown>>).map((h, i) => {
+    if (h.tool) return `${i + 1}. ${String(h.tool)}(${compact(h.args ?? {}, 100)}) -> ${h.error ? 'ERROR ' + compact(h.error) : 'ok ' + compact(h.result)}`;
+    if (h.rejectedUnknownTool) return `${i + 1}. rejected unknown tool ${String(h.rejectedUnknownTool)}`;
+    if (h.revised) return `${i + 1}. revised: ${compact(h.revised, 100)}`;
+    if (h.escalated) return `${i + 1}. escalated: ${compact(h.escalated, 100)}`;
+    if (h.malformedOutput) return `${i + 1}. malformed output, retry`;
+    return `${i + 1}. ${compact(h, 120)}`;
+  }).join('\n');
+  return `Task: ${compact(task, 300)}\n\nTools:\n${toolList}\n\nDone so far:\n${trail || '(nothing yet — pick the first tool call)'}`;
 }
 
 /**
@@ -32,6 +45,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const history: unknown[] = [];
   let toolCalls = 0;
   let escalated = false;
+  let lastCallSig: string | undefined;
+  let lastToolResult: unknown;
 
   let provider: ModelProvider = needle;
   try { await needle.health(); } catch { /* stub always unhealthy -> escalate path */ }
@@ -49,9 +64,17 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     if (Date.now() - t0 > limits.maxExecutionMs) throw new Error('agent loop: execution time limit exceeded');
     if (input.signal?.aborted) throw new Error('agent loop: aborted');
 
+    // Needle contract: turn 1 frames task+tools; later turns feed the raw
+    // tool result back so the model continues the loop (result-forward).
+    // Anything else (prose wrappers) degrades its confidence.
+    const lastResult = [...history].reverse().find((h): h is { tool: unknown; result: unknown } =>
+      typeof h === 'object' && h !== null && 'tool' in h && 'result' in h);
+    const prompt = (provider === needle && lastResult)
+      ? `Result of ${String((lastResult as { tool: unknown }).tool)}: ${compact((lastResult as { result: unknown }).result, 400)}\nTask reminder: ${compact(input.task, 200)}`
+      : buildObservation(input.task, input.toolSchemas, history);
     const req: ModelRequest = {
-      prompt: buildObservation(input.task, input.toolSchemas, history),
-      systemPrompt: 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose.',
+      prompt,
+      systemPrompt: 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose: {"action":"call_tool","tool":"...","args":{}} or {"action":"complete","result":...} or {"action":"escalate","reason":"..."} or {"action":"revise","note":"..."}.',
       signal: input.signal,
       timeoutMs: 8000,
       tools: input.toolSchemas.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
@@ -100,9 +123,17 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     if (decision.action === 'revise') { history.push({ revised: decision.note }); continue; }
     if (decision.action === 'call_tool') {
       if (!knownTools.has(decision.tool)) { history.push({ rejectedUnknownTool: decision.tool }); continue; }
+      // Saturation guard: identical re-call means the model has nothing new;
+      // finish with the last result instead of looping or escalating.
+      const sig = `${decision.tool}:${JSON.stringify(decision.args)}`;
+      if (sig === lastCallSig && lastToolResult !== undefined) {
+        return { decision: { action: 'complete', result: lastToolResult, reasoning: 'repeated identical call — task saturated' }, toolCalls, iterations: i, escalated };
+      }
+      lastCallSig = sig;
       if (++toolCalls > limits.maxToolCalls) throw new Error('agent loop: tool call limit exceeded');
       try {
         const result = await input.executor.executeTool(decision.tool, decision.args, input.signal);
+        lastToolResult = result;
         history.push({ tool: decision.tool, result });
       } catch (e) {
         history.push({ tool: decision.tool, error: e instanceof Error ? e.message : String(e) });

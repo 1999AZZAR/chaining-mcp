@@ -95,6 +95,28 @@ export class RequestHandlers {
       case 'llm_decompose_task': {
         const tools = this.discovery.getTools();
         const summary = tools.map(t => `${t.name} (${t.category || 'utility'}): ${t.description}`).join('\n');
+        // Needle-first planning when the agent runtime is enabled; legacy path otherwise.
+        if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true') {
+          try {
+            const { planTask } = await import('../agent/agent.js');
+            const plan = await planTask(args.task, summary);
+            return {
+              ok: true,
+              source: 'needle',
+              subtasks: plan.steps.map(s => ({
+                step: s.step,
+                task: s.task,
+                recommendedCategory: s.recommendedCategory || 'utility',
+                tool: s.tool,
+                dependsOn: s.dependsOn,
+              })),
+            };
+          } catch (e) {
+            const reason = e instanceof Error ? e.message : String(e);
+            const legacy = await this.llmManager.decomposeTask(args.task, summary);
+            return { ...legacy, source: 'legacy_fallback', needleError: reason };
+          }
+        }
         return await this.llmManager.decomposeTask(args.task, summary);
       }
 

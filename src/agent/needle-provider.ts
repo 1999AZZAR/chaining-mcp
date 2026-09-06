@@ -135,19 +135,24 @@ export class NeedleProvider implements ModelProvider {
     });
   }
 
-  private postJson(path: string, body: unknown): Promise<unknown> {
+  private postJson(path: string, body: unknown, retried = false): Promise<unknown> {
     const data = JSON.stringify(body);
     return new Promise((resolve, reject) => {
       const req = httpRequest({
         host: '127.0.0.1', port: this.config.servePort, path, method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+        agent: false,
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), 'Connection': 'close' },
         timeout: this.config.timeoutMs,
-      }, (res: { on: (ev: string, cb: (c?: unknown) => void) => void }) => {
+      }, (res) => {
         let buf = '';
         res.on('data', (c) => { buf += c; });
         res.on('end', () => { try { resolve(JSON.parse(buf)); } catch (e) { reject(e); } });
       });
-      req.on('error', reject);
+      req.on('error', (e) => {
+        // Engine closes idle keep-alive sockets; retry once on a fresh connection.
+        if (!retried && /socket hang up|ECONNRESET/.test(e.message)) this.postJson(path, body, true).then(resolve, reject);
+        else reject(e);
+      });
       req.on('timeout', () => { req.destroy(new Error('needle server request timeout')); });
       req.write(data);
       req.end();
