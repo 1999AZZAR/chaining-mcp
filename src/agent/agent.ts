@@ -51,11 +51,29 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       systemPrompt: 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose.',
       signal: input.signal,
       timeoutMs: 8000,
+      tools: input.toolSchemas.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
     };
     const res = await provider.generate(req);
+    // Needle native contract → AgentDecision translation.
+    let rawText = res.text;
+    if (provider === needle) {
+      try {
+        const native = JSON.parse(rawText);
+        const calls = native.function_calls || [];
+        if (native.type === 'respond') {
+          rawText = JSON.stringify({ action: 'complete', result: native.reasoning || calls, reasoning: native.reasoning });
+        } else if (!calls.length) {
+          rawText = JSON.stringify({ action: 'escalate', reason: 'needle refused: no declared tool serves this request', context: native });
+        } else if (!needle.isConfident(res.text)) {
+          rawText = JSON.stringify({ action: 'escalate', reason: `needle confidence ${needle.confidenceOf(res.text)} below threshold`, context: native });
+        } else {
+          rawText = JSON.stringify({ action: 'call_tool', tool: calls[0].name, args: calls[0].arguments || {}, reasoning: native.reasoning });
+        }
+      } catch { /* fall through to malformed path */ }
+    }
     let decision: AgentDecision;
     try {
-      const cleaned = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
       decision = AgentDecisionSchema.parse(JSON.parse(cleaned));
     } catch {
       history.push({ malformedOutput: res.text.slice(0, 500) });

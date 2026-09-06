@@ -29,6 +29,7 @@ export interface ModelRequest {
   signal?: AbortSignal;
   maxTokens?: number;
   timeoutMs?: number;
+  tools?: Array<{ name: string; description?: string; schema?: unknown }>;
 }
 
 export interface ModelResponse {

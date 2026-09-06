@@ -2,13 +2,15 @@
 
 Base: `main` @ `b22a843`. Main stays stable; all work here.
 
-## Milestone 1 — Needle provider [x] scaffolded
+## Milestone 1 — Needle provider [~] engine bundled, health live
 - [x] `ModelProvider` seam (`src/agent/schemas.ts`)
-- [x] `NeedleProvider` stub (`src/agent/needle-provider.ts`)
+- [x] `NeedleProvider` spawns bundled CLI (`src/agent/needle-provider.ts`)
 - [x] `OpenRouterProvider` adapter, no behavior change
-- [ ] Bind real Needle 2 runtime (model load, lazy init, config)
-- [ ] Diagnostics via health/status
-- [ ] Graceful failure when model missing
+- [x] `scripts/fetch-needle.mjs` + `npm run needle:fetch` (engine + `needle2.cact`, gitignored)
+- [x] Engine smoke-tested (get_weather/Jakarta, conf 0.84)
+- [ ] `--serve` persistent mode (avoid per-turn spawn cost) + `NEEDLE_TOOL_INDEX_PATH` for large catalogues
+- [ ] Diagnostics via MCP status tool
+- [ ] Tuned `.cact` flow (`NEEDLE_MODEL_PATH`) once we finetune
 
 ## Milestone 2 — Agent decision protocol [x] scaffolded
 - [x] Strict `AgentDecision` zod schema + validation

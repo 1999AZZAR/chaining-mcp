@@ -13,6 +13,7 @@
     "clean": "rm -rf dist",
     "test": "npm run build && node test-smoke.js",
     "test:llm": "npm run build && node test-live-llm.js",
+    "needle:fetch": "node scripts/fetch-needle.mjs",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [
