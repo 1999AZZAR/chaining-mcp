@@ -10,6 +10,8 @@ export interface AgentRunInput {
   executor: AgentToolExecutor;
   signal?: AbortSignal;
   limits?: Partial<AgentLoopLimits>;
+  /** Test seam: override the default Needle-first / OpenRouter-escalation pair. */
+  providers?: { primary?: ModelProvider; escalation?: ModelProvider };
 }
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
@@ -39,8 +41,12 @@ function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], his
 export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean }> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const t0 = Date.now();
-  const needle = new NeedleProvider();
-  const escalation = new OpenRouterProvider();
+  const needle = input.providers?.primary instanceof NeedleProvider
+    ? input.providers.primary as NeedleProvider
+    : (input.providers?.primary ? null : new NeedleProvider());
+  const primary: ModelProvider = needle ?? input.providers!.primary!;
+  const needleApi: Pick<NeedleProvider, 'isConfident' | 'confidenceOf' | 'resetConversation' | 'stopServer'> | null = needle;
+  const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
   const knownTools = new Set(input.toolSchemas.map(t => t.name));
   const history: unknown[] = [];
   let toolCalls = 0;
@@ -48,18 +54,18 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   let lastCallSig: string | undefined;
   let lastToolResult: unknown;
 
-  let provider: ModelProvider = needle;
-  try { await needle.health(); } catch { /* stub always unhealthy -> escalate path */ }
-  const needleHealth: { ok: boolean; detail?: string } = await needle.health().catch(() => ({ ok: false, detail: 'health check threw' }));
-  if (!needleHealth.ok) {
+  const isPrimary = (p: ModelProvider): boolean => p === primary;
+  let provider: ModelProvider = primary;
+  const primaryHealth: { ok: boolean; detail?: string } = await primary.health().catch(() => ({ ok: false, detail: 'health check threw' }));
+  if (!primaryHealth.ok) {
     provider = escalation;
     escalated = true;
-    history.push({ note: 'needle unavailable, escalated to openrouter', detail: needleHealth.detail });
+    history.push({ note: 'primary unavailable, escalated', detail: primaryHealth.detail });
   }
 
   try {
 
-  if (provider === needle) await needle.resetConversation().catch(() => undefined);
+  if (isPrimary(provider)) await needleApi?.resetConversation().catch(() => undefined);
   for (let i = 1; i <= limits.maxIterations; i++) {
     if (Date.now() - t0 > limits.maxExecutionMs) throw new Error('agent loop: execution time limit exceeded');
     if (input.signal?.aborted) throw new Error('agent loop: aborted');
@@ -69,7 +75,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     // Anything else (prose wrappers) degrades its confidence.
     const lastResult = [...history].reverse().find((h): h is { tool: unknown; result: unknown } =>
       typeof h === 'object' && h !== null && 'tool' in h && 'result' in h);
-    const prompt = (provider === needle && lastResult)
+    const prompt = (isPrimary(provider) && needleApi && lastResult)
       ? `Result of ${String((lastResult as { tool: unknown }).tool)}: ${compact((lastResult as { result: unknown }).result, 400)}\nTask reminder: ${compact(input.task, 200)}`
       : buildObservation(input.task, input.toolSchemas, history);
     const req: ModelRequest = {
@@ -85,11 +91,11 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (provider !== escalation) { provider = escalation; escalated = true; history.push({ note: 'primary provider failed, escalated', error: msg }); continue; }
-      throw new Error(`agent loop: escalation provider failed after Needle (${history.length} prior observations): ${msg}`);
+      throw new Error(`agent loop: escalation provider failed after primary (${history.length} prior observations): ${msg}`);
     }
-    // Needle native contract → AgentDecision translation.
+    // Needle native contract → AgentDecision translation (primary only when it is a NeedleProvider).
     let rawText = res.text;
-    if (provider === needle) {
+    if (isPrimary(provider) && needleApi) {
       try {
         const native = JSON.parse(rawText);
         const calls = native.function_calls || [];
@@ -97,8 +103,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
           rawText = JSON.stringify({ action: 'complete', result: native.reasoning || calls, reasoning: native.reasoning });
         } else if (!calls.length) {
           rawText = JSON.stringify({ action: 'escalate', reason: 'needle refused: no declared tool serves this request', context: native });
-        } else if (!needle.isConfident(res.text)) {
-          rawText = JSON.stringify({ action: 'escalate', reason: `needle confidence ${needle.confidenceOf(res.text)} below threshold`, context: native });
+        } else if (!needleApi.isConfident(res.text)) {
+          rawText = JSON.stringify({ action: 'escalate', reason: `needle confidence ${needleApi.confidenceOf(res.text)} below threshold`, context: native });
         } else {
           rawText = JSON.stringify({ action: 'call_tool', tool: calls[0].name, args: calls[0].arguments || {}, reasoning: native.reasoning });
         }
@@ -110,7 +116,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       decision = AgentDecisionSchema.parse(JSON.parse(cleaned));
     } catch {
       history.push({ malformedOutput: res.text.slice(0, 500) });
-      if (provider === needle) { provider = escalation; escalated = true; history.push({ note: 'malformed needle output, escalated' }); continue; }
+      if (isPrimary(provider)) { provider = escalation; escalated = true; history.push({ note: 'malformed primary output, escalated' }); continue; }
       throw new Error('agent loop: escalation provider returned malformed decision');
     }
 
@@ -142,7 +148,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   }
   throw new Error('agent loop: iteration limit exceeded');
   } finally {
-    needle.stopServer();
+    needleApi?.stopServer();
   }
 }
 
@@ -152,8 +158,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
  * plan steps; validates into AgentPlan. Falls back to OpenRouter, then to
  * the legacy heuristic (kept until benchmarks justify removal).
  */
-export async function planTask(task: string, availableToolsSummary: string, signal?: AbortSignal): Promise<AgentPlan> {
-  const needle = new NeedleProvider();
+export async function planTask(task: string, availableToolsSummary: string, signal?: AbortSignal, providers?: { primary?: NeedleProvider; escalation?: ModelProvider }): Promise<AgentPlan> {
+  const needle = providers?.primary ?? new NeedleProvider();
   try {
     const res = await needle.generate({
       prompt: `Break this task into ordered steps. Emit one define_step call per step.\n\nTask: ${task}\n\nAvailable capabilities:\n${availableToolsSummary.slice(0, 1500)}`,
@@ -185,7 +191,7 @@ export async function planTask(task: string, availableToolsSummary: string, sign
   } catch { /* fall through to escalation */ }
   finally { needle.stopServer(); }
 
-  const escalation = new OpenRouterProvider();
+  const escalation = providers?.escalation ?? new OpenRouterProvider();
   try {
     const res = await escalation.generate({
       prompt: `Decompose into 3-6 ordered steps as JSON array [{"step":1,"task":"...","recommendedCategory":"..."}]. Task: ${task}. Tools: ${availableToolsSummary.slice(0, 1500)}`,

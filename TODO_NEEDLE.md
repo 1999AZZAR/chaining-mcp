@@ -52,9 +52,11 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
 - [ ] Keep deterministic validation/safety/fast paths
 
-## Benchmarks (`tests/agent/`)
-- [ ] routing, decomposition, tool-selection, argument-generation, replanning, escalation, failure-recovery, limits
-- [ ] Compare heuristic vs Needle vs OpenRouter vs Needle→OpenRouter (success, accuracy, invalid calls, latency, mem/CPU, tokens, escalation rate)
+## Benchmarks (`tests/agent/`) [x] suite live, 18/18 green
+- [x] `npm run test:agent` — 13 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery)
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 5 engine tests (health, call shape+confidence, planTask, serve multi-turn)
+- [ ] Replanning / multi-observation / circular-dependency cases
+- [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)
 
 ## Env (target)
 ```

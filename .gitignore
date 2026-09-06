@@ -112,3 +112,5 @@ docker-compose.override.yml
 memory.db*
 # Needle 2 bundled binaries (fetched via npm run needle:fetch, Apache-2.0 Cactus-Compute/needle2)
 assets/needle/
+# Agent test build output
+tests/agent/.dist/

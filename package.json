@@ -14,6 +14,8 @@
     "test": "npm run build && node test-smoke.js",
     "test:llm": "npm run build && node test-live-llm.js",
     "needle:fetch": "node scripts/fetch-needle.mjs",
+    "test:agent": "node scripts/test-agent.mjs",
+    "test:agent:live": "NEEDLE_LIVE=1 node scripts/test-agent.mjs",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [
