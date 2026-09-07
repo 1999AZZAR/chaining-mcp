@@ -3,7 +3,34 @@
 
 > **Part of the [HeLa MCP Ecosystem](https://github.com/1999AZZAR/hela-mcp-ecosystem)** — This server is **HeLa Mitosis (`hela-mitosis`)** — the *Orchestrator* component of the HeLa cellular architecture. See the [ecosystem docs](https://github.com/1999AZZAR/hela-mcp-ecosystem) for profiles, workflows, and multi-client setup.
 
-A refined and unified Model Context Protocol (MCP) server that combines intelligent tool chaining, route optimization, sequential thinking, time management, development guidance, monitoring, analytics, security, and compliance capabilities. This server discovers available MCP servers on your system, analyzes their tools, validates tool chains, and provides a complete enterprise-grade toolkit for complex task execution with real awesome-copilot MCP server integration.
+A refined and unified Model Context Protocol (MCP) server that combines intelligent tool chaining, route optimization, time management, development guidance, monitoring, analytics, security, and compliance capabilities. This server discovers available MCP servers on your system, analyzes their tools, validates tool chains, and provides a complete enterprise-grade toolkit for complex task execution with real awesome-copilot MCP server integration.
+
+## Agent Runtime (Needle 2, bundled)
+
+Mitosis runs a local agent — no model env vars required:
+
+```
+User
+ ↓
+Mitosis
+ ├─ Needle 2 (bundled engine, auto-enabled when present)
+ │    ↓ structured decision
+ ├─ state / observation (AgentState: observations, decisions,
+ │    tool calls, results, revisions, branches)
+ │    ↓
+ ├─ workflow executor (WorkflowOrchestrator: registry-guarded,
+ │    transported, retried, cancellable)
+ │    ↓
+ └─ MCP capabilities
+      ↓ result
+   Needle 2 → next decision (…until complete / escalate / limits)
+```
+
+- **Bundled engine**: fetch once with `npm run needle:fetch` (downloads the ~15MB Needle 2 engine + weights from `Cactus-Compute/needle2` into gitignored `assets/needle/`). The runtime auto-enables when the engine is present; `MITOSIS_AGENT_ENABLED=false` opts out.
+- **Agent-first tools**: `agent_run` (full plan → execute → observe loop), `sequentialthinking` (one Needle-backed observe → decide → execute step over shared `AgentState`), `analyze_with_sequential_thinking` (the validated plan IS the analysis), plus `workflow_status` / `workflow_cancel`.
+- **Escalation, not fallback**: OpenRouter (`OPENROUTER_API_KEY`) is used only on low confidence, refusal, malformed output, provider failure, or repeated tool failures — budgeted (`AGENT_MAX_ESCALATIONS`, default 1) with a recorded trail. Without a key the agent still runs fully offline.
+- **Diagnostics**: `chaining://agent/status` reports readiness without spawning the engine and never exposes keys.
+- **Verified**: `node scripts/test-agent.mjs` (mock suite) and `NEEDLE_LIVE=1 node scripts/test-agent.mjs` (live engine suite) — see [Testing](#building--testing).
 
 ## Table of Contents
 
@@ -40,7 +67,6 @@ A refined and unified Model Context Protocol (MCP) server that combines intellig
   - [Building](#building)
   - [Testing](#testing)
 - [Integration with Other MCP Servers](#integration-with-other-mcp-servers)
-  - [Sequential Thinking MCP Integration](#sequential-thinking-mcp-integration)
   - [Awesome Copilot Integration](#awesome-copilot-integration-2)
   - [Project-Guardian Integration](#project-guardian-integration)
 - [License](#license)
@@ -56,7 +82,7 @@ A refined and unified Model Context Protocol (MCP) server that combines intellig
 - **Smart Server Discovery**: Automatically discovers MCP servers from `~/.cursor/mcp.json` and other configuration locations
 - **Tool Analysis**: Analyzes available tools and their capabilities
 - **Route Optimization**: Generates intelligent suggestions for tool chaining based on optimization criteria
-- **Sequential Thinking Integration**: Works with sequential thinking MCP for complex workflow analysis
+- **Sequential Thinking Integration**: Thinking is handled locally by the bundled Needle 2 agent — no external sequential-thinking MCP required
 - **Tool Chain Validation**: Validates tool chains for correctness, dependencies, and security issues
 - **Performance Analysis**: Analyzes tool chain performance with optimization recommendations
 
@@ -69,9 +95,10 @@ A refined and unified Model Context Protocol (MCP) server that combines intellig
 
 ### Advanced Thinking Capabilities
 
-- **Sequential Thinking**: Dynamic problem-solving through structured thinking process
-- **Thought Branching**: Support for alternative reasoning paths and revisions
-- **Context Preservation**: Maintains thinking context across multiple steps
+- **Needle Agent Runtime**: Every thinking tool is backed by the bundled Needle 2 model — no remote sequential-thinking MCP, no canned template thoughts
+- **Sequential Thinking**: One observe → decide → execute agent step per call, recorded in shared `AgentState`; pass `sessionId` to continue a session
+- **Thought Branching**: Revisions and branch markers map to first-class state events
+- **Context Preservation**: Bounded per-session history (observations, decisions, tool calls/results) feeds each turn
 - **Brainstorming**: Generate creative ideas using multiple approaches (creative, analytical, practical, innovative)
 - **Idea Evaluation**: Automatic evaluation and prioritization of generated ideas
 - **Workflow Orchestration**: Execute complex multi-server workflows with dependency management
@@ -85,10 +112,11 @@ A refined and unified Model Context Protocol (MCP) server that combines intellig
 ### Built-in LLM Intelligence Engine
 
 - **Multi-Provider Support**: Built-in native client supporting OpenRouter and OpenAI-compatible endpoints
-- **Zero Host Token Waste**: Offloads task decomposition, route ranking, and summarization to fast sub-models (e.g. `openrouter/free` with auto-fallback to `openrouter/auto`)
-- **Task Decomposition**: Breaks complex engineering goals into categorized, sequential tool chains
+- **Escalation Backend**: OpenRouter (`openrouter/free` with auto-fallback to `openrouter/auto`) is invoked only when the local Needle agent escalates — low confidence, refusal, malformed output, provider failure, repeated tool failures
+- **Zero Host Token Waste**: Offloads task decomposition, route ranking, and summarization to fast sub-models
+- **Task Decomposition**: `llm_decompose_task` routes via the Needle planner first, then OpenRouter, then a deterministic fallback
 - **High-Density Summarization**: Summarizes lengthy command outputs and logs without polluting the main agent's context window
-- **Resilient Fallback**: Automatic instant fallback to local heuristic routing if the LLM is unconfigured or rate-limited
+- **Offline-First**: Without `OPENROUTER_API_KEY` the agent still runs fully on the bundled engine
 
 ### Enterprise Capabilities
 
@@ -104,10 +132,10 @@ A refined and unified Model Context Protocol (MCP) server that combines intellig
 - **Unified Interface**: Single server providing all functionality
 - **In-Memory Caching with TTL**: 60s TTL for server and tool discovery with bounded directory traversal
 - **Per-Tool Timeout Safeguards**: 10s default execution timeout preventing process hangs
-- **Enhanced Components**: Refined implementations of sequential thinking and time management
+- **Enhanced Components**: Refined implementations of agent runtime and time management
 - **Robust Error Handling**: Improved validation and error handling across all components
 - **Enhanced Time Management**: Better timezone handling with proper DST detection
-- **Advanced Sequential Thinking**: Enhanced thought processing with branching and revision support
+- **Agent-Backed Sequential Thinking**: Every thought is a Needle observe → decide → execute step over shared state
 - **Awesome Copilot Integration**: Direct access to curated development collections and instructions
 - **42 Prompts & 12 Resource Sets**: Comprehensive collection covering development, orchestration, MCP ecosystem workflows, monitoring, analytics, security, and compliance guidance
 - **Intelligent Tool Guidance**: Structured guidance to help models effectively use available toolsets
@@ -284,34 +312,32 @@ These prebuilt prompts and resource sets help models:
 
 ### Configuration
 
-Add the chaining MCP server to your MCP client configuration (`~/.cursor/mcp.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `~/.config/opencode/opencode.json`, `~/.config/zed/settings.json`, etc.):
+Add the chaining MCP server to your MCP client configuration (`~/.cursor/mcp.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `~/.config/opencode/opencode.json`, `~/.config/zed/settings.json`, etc.).
+
+Minimal opencode config — Needle and sequential thinking are bundled and always on:
 
 ```json
 {
-  "mcpServers": {
-    "chaining": {
-      "command": "node",
-      "args": ["/path/to/chaining-mcp/dist/index.js"],
-      "env": {
-        "CHAINING_TOOL_TIMEOUT_MS": "10000",
-        "CHAINING_LLM_ENABLED": "true",
-        "OPENROUTER_API_KEY": "your_openrouter_api_key_here",
-        "CHAINING_LLM_MODEL": "openrouter/free",
-        "CHAINING_LLM_BASE_URL": "https://openrouter.ai/api/v1",
-        "SEQUENTIAL_THINKING_AVAILABLE": "true",
-        "AWESOME_COPILOT_ENABLED": "true",
-        "RELIABILITY_MONITORING_ENABLED": "true",
-        "GITHUB_TOKEN": "your_github_token_here"
-      }
+  "hela-mitosis": {
+    "type": "local",
+    "enabled": true,
+    "command": ["node", "/path/to/chaining-mcp/dist/index.js"],
+    "environment": {
+      "CHAINING_TOOL_TIMEOUT_MS": "10000",
+      "MEMORY_FILE_PATH": "/path/to/chaining-mcp/data/memory.json",
+      "AWESOME_COPILOT_ENABLED": "true",
+      "RELIABILITY_MONITORING_ENABLED": "true",
+      "GITHUB_TOKEN": "ghp_xxxx",
+      "OPENROUTER_API_KEY": "sk-or-xxx"
     }
   }
 }
 ```
 
-**Note:** Replace `/path/to/chaining-mcp` with your actual path to the chaining-mcp directory.
+**Note:** Replace `/path/to/chaining-mcp` with your actual path, then run `npm run needle:fetch` once inside it to download the bundled engine. No `MITOSIS_AGENT_ENABLED` / `NEEDLE_*` / `SEQUENTIAL_THINKING_*` vars needed.
 
-**Important:** 
-- `OPENROUTER_API_KEY`: Required if `CHAINING_LLM_ENABLED` is `true`. Automatically uses `openrouter/free` and falls back to `openrouter/auto`.
+**Important:**
+- `OPENROUTER_API_KEY`: Optional — feeds escalation only (agent runs fully offline without it). Set `AGENT_ESCALATION_ENABLED=false` to disable escalation entirely.
 - `GITHUB_TOKEN`: Optional, required only for live syncing of remote GitHub Awesome Copilot instructions. (Local fallback is used if omitted).
 
 ## Available Tools
@@ -362,16 +388,14 @@ Generates optimal route suggestions for a given task.
 
 #### 4. `analyze_with_sequential_thinking`
 
-Analyzes complex workflows using sequential thinking.
+Analyzes complex problems with the Needle agent: the returned plan IS the analysis — one validated tool chain grounded in registry tools.
 
 ![Blotcat sitting cross-legged, branching thought bubbles emerging from its head](assets/chaining-illustrations/03-sequential.jpg)
 **Input**:
 
 - `problem` (required): The problem to analyze
-- `criteria` (optional): Optimization criteria
-- `maxThoughts` (optional): Maximum number of thoughts (1-20, default: 10)
 
-**Output**: JSON object containing sequential thinking analysis, thoughts, and suggestions.
+**Output**: JSON object with `thoughts` (one per planned step), `analysis`, `suggestions` (validated tool chain with registry-resolution confidence), all sourced from the agent (`source: 'needle-agent'`).
 
 #### 5. `get_tool_chain_analysis`
 
@@ -407,25 +431,25 @@ Loads a custom instruction from the repository.
 
 **Output**: JSON object containing the instruction content and metadata. Requires GITHUB_TOKEN environment variable to be configured.
 
-### Sequential Thinking Tool
+### Agent Runtime Tools
 
 #### 8. `sequentialthinking`
 
-A detailed tool for dynamic and reflective problem-solving through thoughts.
+Think one step with the Mitosis agent: your thought is recorded as an observation in shared `AgentState`, Needle decides the next action (`call_tool` / `revise` / `complete` / `escalate`), and a `call_tool` decision executes immediately through the workflow orchestrator.
 
 **Input**:
 
-- `thought` (required): Your current thinking step
+- `thought` (required): Your current thinking step (recorded as the step observation)
 - `nextThoughtNeeded` (required): Whether another thought step is needed
-- `thoughtNumber` (required): Current thought number
+- `thoughtNumber` (required): Current thought number (mirrored from state)
 - `totalThoughts` (required): Estimated total thoughts needed
-- `isRevision` (optional): Whether this revises previous thinking
-- `revisesThought` (optional): Which thought is being reconsidered
-- `branchFromThought` (optional): Branching point thought number
-- `branchId` (optional): Branch identifier
+- `task` (optional): Ongoing task this step belongs to (defaults to the thought)
+- `sessionId` (optional): Continue an existing agent session
+- `execute` (optional): Execute a `call_tool` decision immediately (default: true)
+- `isRevision` / `revisesThought` / `branchFromThought` / `branchId` (optional): Recorded as first-class state events
 - `needsMoreThoughts` (optional): If more thoughts are needed
 
-**Output**: JSON object with thought processing results and metadata.
+**Output**: JSON object with legacy-shaped fields (`thoughtNumber`, `totalThoughts`, `nextThoughtNeeded`) plus agent fields (`source: 'needle-agent'`, `sessionId`, `decision`, `result`, `escalated`, `state`, `recentState`).
 
 #### 9. `brainstorming`
 
@@ -451,7 +475,7 @@ Generate creative ideas and solutions for problems using different brainstorming
 
 #### 10. `workflow_orchestrator`
 
-Execute complex multi-server workflows across the MCP ecosystem with dependency management and error handling.
+Execute complex multi-server workflows across the MCP ecosystem with dependency management and error handling. Steps execute against the real local tool implementations (transport-bound), with genuine retries, cancellation support, and a non-reentrancy guard.
 
 ![Blotcat acting as a factory manager, operating conveyor belts for data handoffs](assets/chaining-illustrations/04-workflow.jpg)
 **Input**:
@@ -622,6 +646,37 @@ Generates high-density summaries of extensive logs, search results, or multi-too
 
 **Output**: JSON object with concise summary.
 
+### Agent Runtime Tools (continued)
+
+#### 23. `agent_run`
+
+Run a task through the full Needle loop: plan with the local model, execute tools via the workflow orchestrator, observe results, escalate to OpenRouter only on low confidence or failure.
+
+**Input**:
+
+- `task` (required): The task or objective for the agent to accomplish
+- `maxIterations` (optional): Maximum decide-act-observe iterations (1-20, default: 8)
+- `maxToolCalls` (optional): Maximum tool executions per run (1-30, default: 12)
+- `maxExecutionMs` (optional): Run wall-clock budget in ms (default: 60000, cap: 300000)
+
+**Output**: JSON object with `workflowId`, `sessionId`, validated `plan`, final `decision`, `toolCalls`, `iterations`, `escalated` + `escalations` trail, and `stateStats`.
+
+#### 24. `workflow_status`
+
+Get the current status and step results of a workflow executed by `workflow_orchestrator` or `agent_run`.
+
+**Input**:
+
+- `workflowId` (required): Workflow identifier returned by `workflow_orchestrator` or `agent_run`
+
+#### 25. `workflow_cancel`
+
+Request cancellation of a running workflow.
+
+**Input**:
+
+- `workflowId` (required): Workflow identifier to cancel
+
 ## Available Resources
 
 ### `chaining://servers`
@@ -662,7 +717,11 @@ Returns a JSON object with the current status of awesome-copilot integration.
 
 ### `chaining://sequential/state`
 
-Returns a JSON object with the current state of sequential thinking sessions, including thought history and active session status.
+Returns live AgentState sessions (observations, decisions, tool calls/results, revisions, branches, escalation, termination) backing the Needle-driven sequential thinking.
+
+### `chaining://agent/status`
+
+Returns configuration and readiness of the local Needle agent runtime and escalation policy (spawn-free, never exposes keys).
 
 ### `chaining://workflows/status`
 
@@ -762,20 +821,41 @@ const instruction = await mcpClient.callTool('load_instruction', {
 ### Sequential Thinking
 
 ```javascript
-// Use sequential thinking for complex problem solving
-const thought1 = await mcpClient.callTool('sequentialthinking', {
-  thought: 'I need to analyze this complex problem step by step',
+// Think one agent step: thought recorded, Needle decides, result feeds back
+const step1 = await mcpClient.callTool('sequentialthinking', {
+  thought: 'I need the Jakarta weather first',
+  task: 'get weather in Jakarta',
   nextThoughtNeeded: true,
   thoughtNumber: 1,
   totalThoughts: 5
 });
+// → { source: 'needle-agent', sessionId, decision, result, state, recentState }
 
-const thought2 = await mcpClient.callTool('sequentialthinking', {
-  thought: 'Let me break down the problem into smaller components',
-  nextThoughtNeeded: true,
+// Continue the same session
+const step2 = await mcpClient.callTool('sequentialthinking', {
+  thought: 'Weather known, wrap up',
+  task: 'get weather in Jakarta',
+  sessionId: step1.sessionId,
+  nextThoughtNeeded: false,
   thoughtNumber: 2,
   totalThoughts: 5
 });
+```
+
+### Agent Run
+
+```javascript
+// Full plan → execute → observe loop through the Needle agent
+const run = await mcpClient.callTool('agent_run', {
+  task: 'get weather in Jakarta and summarize it',
+  maxIterations: 8,
+  maxToolCalls: 12
+});
+// → { workflowId, sessionId, plan, decision, toolCalls, escalations, stateStats }
+
+// Inspect / cancel via lifecycle tools
+const status = await mcpClient.callTool('workflow_status', { workflowId: run.workflowId });
+await mcpClient.callTool('workflow_cancel', { workflowId: run.workflowId });
 ```
 
 ### Brainstorming
@@ -962,7 +1042,15 @@ console.log(llmStatus, llmUsage);
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CHAINING_TOOL_TIMEOUT_MS` | `10000` | Hard timeout (ms) for any tool execution |
+| `CHAINING_TOOL_TIMEOUT_MS` | `10000` | Hard timeout (ms) for any tool execution (`agent_run` / agent-fronted `sequentialthinking` honor their own budget instead, capped at 300000) |
+| `OPENROUTER_API_KEY` | *optional* | Escalation backend key (`sk-or-v1-...`). Agent runs fully offline without it |
+| `AGENT_ESCALATION_ENABLED` | `true` | Set `false` to disable OpenRouter escalation entirely |
+| `AGENT_MAX_ESCALATIONS` | `1` | Budgeted one-way escalation trips per run |
+| `AGENT_REPEATED_FAILURE_THRESHOLD` | `3` | Consecutive tool errors that force escalation |
+| `MITOSIS_AGENT_ENABLED` | *auto* | Bundled engine present = on. Set `false` to opt out |
+| `NEEDLE_ENGINE_PATH` | `assets/needle/needle` | Override for non-standard engine locations |
+| `NEEDLE_CONFIDENCE_THRESHOLD` | `0.6` | Act at/above, escalate below |
+| `NEEDLE_PORT` | `18080` | Preferred serve port (free port picked on conflict) |
 | `CHAINING_LLM_ENABLED` | `false` | Enable built-in OpenRouter LLM intelligence features |
 | `OPENROUTER_API_KEY` | *optional* | API Key for OpenRouter (`sk-or-v1-...`) |
 | `CHAINING_LLM_MODEL` | `openrouter/free` | Primary model identifier (auto-falls back to `openrouter/auto`) |
@@ -972,7 +1060,6 @@ console.log(llmStatus, llmUsage);
 | `CHAINING_LLM_APP_NAME` | `hela-mitosis` | OpenRouter `X-Title` app attribution |
 | `CHAINING_LLM_APP_URL` | `https://github.com/1999AZZAR/hela-mcp-ecosystem` | OpenRouter `HTTP-Referer` app attribution |
 | `GITHUB_TOKEN` | *optional* | Personal access token for remote GitHub instruction syncing |
-| `DISABLE_THOUGHT_LOGGING` | `false` | When true, suppresses terminal thought rendering in sequential thinking |
 | `MCP_DISCOVERY_CONFIG_PATHS` | *auto* | JSON array of paths to custom MCP config files |
 | `MCP_SERVERS` | *none* | Direct JSON definition of MCP servers |
 | `MEMORY_FILE_PATH` | `./data/memory.json` | Path to persistent cache file |
@@ -980,9 +1067,10 @@ console.log(llmStatus, llmUsage);
 ### Zero-Key & Offline Autonomous Operation
 
 The server is built to run seamlessly in 100% offline, zero-key environments:
-- **No `OPENROUTER_API_KEY`**: LLM tools (`llm_suggest_route`, `llm_decompose_task`, `llm_summarize`) gracefully and instantly degrade to local heuristic planning (<30ms) without errors or timeouts.
+- **No `OPENROUTER_API_KEY`**: The Needle agent still plans, decides, executes, and completes locally. Escalation paths report a budgeted, recorded failure instead of working.
 - **No `GITHUB_TOKEN`**: Awesome Copilot tools (`search_instructions`, `load_instruction`) operate from the local bundled catalog with zero network requirements.
-- **Core Orchestration**: All 18 core tools, sequential thinking, brainstorming, workflow runners, time management, prompts, and resources run locally in <5ms.
+- **No model env vars**: The Needle 2 engine is bundled (`npm run needle:fetch`) and auto-enables when present.
+- **Core Orchestration**: All core tools, agent runtime, brainstorming, workflow runners, time management, prompts, and resources run locally.
 
 ## Development
 
@@ -998,15 +1086,22 @@ src/
 │   └── optimizer.ts                   # Route optimization & fallback algorithms
 ├── managers/
 │   ├── brainstorming-manager.ts       # Multi-approach brainstorming generator
-│   ├── sequential-thinking-manager.ts # Structured sequential thinking processing
-│   ├── workflow-orchestrator.ts       # Non-blocking workflow orchestration
+│   ├── workflow-orchestrator.ts       # Workflow execution: transport seam, real retries, cancellation
 │   ├── reliability-manager.ts         # System reliability & health monitoring
 │   ├── time-manager.ts                # Time and timezone management with DST
 │   ├── memory-manager.ts              # Memory and knowledge graph management
-│   └── llm-manager.ts                 # Native OpenRouter/OpenAI API manager
+│   └── llm-manager.ts                 # Native OpenRouter/OpenAI API manager (escalation backend)
+├── agent/                             # Needle 2 agent runtime (bundled engine)
+│   ├── agent.ts                       # Agent loop, single step, planner, decision protocol
+│   ├── schemas.ts                     # ModelProvider seam, AgentDecision/AgentPlan schemas
+│   ├── needle-provider.ts             # Bundled engine: serve mode + one-shot
+│   ├── openrouter-provider.ts         # Escalation adapter over LLMManager
+│   ├── state.ts                       # AgentStateManager + shared session store
+│   ├── escalation.ts                  # Budgeted one-way escalation policy
+│   ├── workflow.ts                    # Plan→workflow bridge, runAgentWorkflow
+│   └── diagnostics.ts                 # Bundled-first enablement + spawn-free status
 ├── integrations/
-│   ├── awesome-copilot-integration.ts # Awesome Copilot integration & local catalog
-│   └── sequential-integration.ts      # Sequential thinking integration
+│   └── awesome-copilot-integration.ts # Awesome Copilot integration & local catalog
 ├── prompts/
 │   ├── prompt-definitions.ts          # Prompt and resource set data definitions
 │   ├── prompt-handlers.ts             # Dynamic prompt generation and validation logic
@@ -1014,10 +1109,11 @@ src/
 ├── handlers/
 │   └── request-handlers.ts            # Central tool execution dispatcher with timeout guards
 ├── tools/
-│   ├── tool-registry.ts               # Tool definitions and listing (22 tools)
+│   ├── tool-registry.ts               # Tool definitions and listing (agent tools gated on bundled engine)
 │   ├── core-chaining-tools.ts         # Core chaining tool schemas (6 tools)
 │   ├── awesome-copilot-tools.ts       # Awesome Copilot tool schemas (2 tools)
 │   ├── sequential-thinking-tools.ts   # Sequential thinking tool schemas (2 tools)
+│   ├── agent-tools.ts                 # agent_run + workflow_status/workflow_cancel schemas
 │   ├── time-management-tools.ts       # Time management tool schemas (2 tools)
 │   ├── prompt-resource-tools.ts       # Prompt/resource tool schemas (4 tools)
 │   ├── validation-analysis-tools.ts   # Validation/analysis tool schemas (2 tools)
@@ -1031,6 +1127,9 @@ src/
 ### Building & Testing
 
 ```bash
+# Fetch the bundled Needle 2 engine + weights (once)
+npm run needle:fetch
+
 # Build TypeScript to JavaScript
 npm run build
 
@@ -1039,20 +1138,17 @@ npm test
 
 # Run live OpenRouter integration test (requires OPENROUTER_API_KEY)
 npm run test:llm
+
+# Run the agent benchmark suite (mock providers, no engine needed)
+node scripts/test-agent.mjs
+
+# Run the agent suite against the live bundled engine
+NEEDLE_LIVE=1 node scripts/test-agent.mjs
 ```
 
 ## Integration with Other MCP Servers
 
-This server is designed to work seamlessly with other MCP servers in your ecosystem:
-
-### Sequential Thinking MCP Integration
-
-When the sequential thinking MCP server is available, the chaining server can:
-
-1. Use sequential thinking to analyze complex problems
-2. Generate more intelligent route suggestions
-3. Provide detailed reasoning for recommendations
-4. Handle multi-step workflow planning
+This server is designed to work seamlessly with other MCP servers in your ecosystem. Sequential thinking is handled locally by the bundled Needle 2 agent — no external sequential-thinking MCP server is required or consulted:
 
 ### Awesome Copilot Integration
 
