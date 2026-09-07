@@ -2,6 +2,11 @@
 
 Base: `main` @ `b22a843`. Main stays stable; all work here.
 
+## E2E (`scripts/test-e2e.mjs`, `npm run test:e2e`) [x] GREEN 16/16 on shipped `dist/`
+- [x] Fixed repo-wide broken build (`moduleResolution: node10` removed in TS 5.9 → NodeNext; `build` cleans first so deleted files can't linger; 2 strict errors fixed)
+- [x] Real MCP stdio: initialize → tools/list (6 agent tools) → sequentialthinking (agent-shaped + legacy fields + session continuity) → agent_run → analysis (needle, no templates) → status/cancel/brainstorming honest-or-real → agent/status (no keys) → sequential/state sessions
+- [x] Found live: `handleLLMTool` blanket guard blocked Needle paths without an LLM instance → per-case guards (fixed, covered)
+
 ## Milestone 1 — Needle provider [x] engine bundled, serve mode live
 - [x] `ModelProvider` seam (`src/agent/schemas.ts`)
 - [x] `NeedleProvider` spawns bundled CLI (`src/agent/needle-provider.ts`)
@@ -94,8 +99,7 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `bench:battery` (`scripts/bench-battery.mjs`, 20 tasks × 3 runs, live): 18/20 fully valid, mean recall 0.825, mean 1270ms/plan, parallel share 0.97
 - [x] Known weak spots (honest): vague tasks refuse ("turn off all the lights", "check disk usage" 0/3); partial chains on 3 two-tool tasks (0.5 recall)
 
-## Prompt guidance in agent context [x] live, planning 3/3 preserved
-- [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only
+## Prompt guidance in agent context [x] live, planning 3/3 preserved- [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only
 - [x] Threaded as `guidance` into `planTask` (single-shot prompt), `agentRun` (turn-1 only), `agentStep` (first-step only), `runAgentWorkflow`
 - [x] Handler resolves via real `PromptRegistry` for `agent_run`, `sequentialthinking`, `analyze_with_sequential_thinking`, `llm_decompose_task`
 - [x] `tests/agent/guidance.test.mjs` — retrieval, empty case, overlap-only, caps

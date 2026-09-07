@@ -105,6 +105,7 @@ export class NeedleProvider implements ModelProvider {
       if (e instanceof SyntaxError) fail('MALFORMED_OUTPUT', 'needle returned non-JSON output', true);
       const msg = e instanceof Error ? e.message : String(e);
       fail(msg.includes('timed out') || msg.includes('TIMEOUT') ? 'TIMEOUT' : 'UNKNOWN', msg, true);
+      throw new Error('unreachable');
     } finally {
       try { unlinkSync(toolsFile); } catch { /* best effort */ }
     }

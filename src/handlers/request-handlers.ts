@@ -152,7 +152,7 @@ export class RequestHandlers {
             this.resolveGuidance(String(args.task || '')),
           );
           const byName = new Map(this.discovery.getTools().map(t => [t.name, t]));
-          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
+          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter((t): t is NonNullable<typeof t> => Boolean(t));
           return {
             ok: true,
             source: 'needle',
@@ -249,7 +249,7 @@ export class RequestHandlers {
             this.resolveGuidance(String(args.task || '')),
           );
           const byName = new Map(this.discovery.getTools().map(t => [t.name, t]));
-          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
+          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter((t): t is NonNullable<typeof t> => Boolean(t));
           return {
             source: 'needle',
             routes: [{
@@ -280,7 +280,7 @@ export class RequestHandlers {
           this.resolveGuidance(String(args.problem || '')),
         );
         const byName = new Map(availableTools.map(t => [t.name, t]));
-        const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
+        const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter((t): t is NonNullable<typeof t> => Boolean(t));
         const knownShare = plan.steps.length ? planTools.length / plan.steps.length : 0;
         return {
           source: 'needle-agent',

@@ -1129,6 +1129,10 @@ NEEDLE_LIVE=1 node scripts/test-agent.mjs
 
 # Run the 20-task planning battery (repeated runs, live engine)
 NEEDLE_LIVE=1 node scripts/bench-battery.mjs
+
+# Full end-to-end against the built server over MCP stdio
+# (keyed runs also prove OpenRouter escalation + brainstorming)
+OPENROUTER_API_KEY=sk-or-xxx CHAINING_LLM_ENABLED=true node scripts/test-e2e.mjs
 ```
 
 ## Integration with Other MCP Servers
