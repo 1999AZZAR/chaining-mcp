@@ -103,4 +103,10 @@ export const chainingResources: Resource[] = [
     description: 'Returns token usage and call volume for the internal LLM engine',
     mimeType: 'application/json',
   },
+  {
+    uri: 'chaining://agent/status',
+    name: 'Needle Agent Runtime Status',
+    description: 'Returns configuration and readiness of the local Needle agent runtime and escalation policy (never exposes keys)',
+    mimeType: 'application/json',
+  },
 ];

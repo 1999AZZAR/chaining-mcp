@@ -233,15 +233,68 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   }
 }
 
+export interface PlanToolDecl { name: string; description?: string; schema?: unknown }
+
+/** Single-shot planner: one bare-task turn with real tools declared; the
+ *  model emits the whole chain as function_calls. No confidence gate —
+ *  planning has no side effects and multi-call chains calibrate low. */
+async function planIterative(
+  needle: NeedleProvider | ModelProvider,
+  task: string,
+  toolDecls: PlanToolDecl[],
+  signal?: AbortSignal,
+  maxSteps = 6,
+): Promise<AgentPlan> {
+  const tools = toolDecls.map(t => ({ name: t.name, description: t.description || t.name, schema: t.schema || { type: 'object' } }));
+  const known = new Set(tools.map(t => t.name));
+  const api = needle as Partial<NeedleProvider>;
+  try {
+    const res = await needle.generate({ prompt: task.slice(0, 500), signal, tools });
+    const native = JSON.parse(res.text);
+    const calls = (native.function_calls || []).filter((c: { name: string }) => known.has(c.name)).slice(0, maxSteps);
+    if (!calls.length) throw new Error('needle produced no plan steps');
+    return AgentPlanSchema.parse({
+      task,
+      steps: calls.map((c: { name: string; arguments: unknown }, i: number) => ({
+        step: i + 1,
+        task: describeArgs(c.name, c.arguments),
+        tool: c.name,
+        dependsOn: i > 0 ? [i] : [],
+      })),
+    });
+  } finally {
+    api.stopServer?.();
+  }
+}
+
+function describeArgs(tool: string, args: unknown): string {
+  const entries = args && typeof args === 'object'
+    ? Object.entries(args as Record<string, unknown>).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ')
+    : '';
+  return entries ? `${tool}(${entries})` : tool;
+}
+
 /**
  * Milestone 3: Needle-first task decomposition.
- * Declares ONLY a `define_step` pseudo-tool so the grammar admits exactly
- * plan steps; validates into AgentPlan. Falls back to OpenRouter, then to
- * the legacy heuristic (kept until benchmarks justify removal).
+ * Declares the REAL tools and builds the plan iteratively: each turn asks
+ * Needle for the next step given the planned steps so far, stopping on
+ * respond/refusal/repeat/low confidence (max 6 steps). A `define_step`
+ * pseudo-tool does NOT work — the model semantically matches the task
+ * against declared tools and refuses meta-tools with an empty call.
+ * Falls back to OpenRouter, then to the legacy heuristic (kept until M7).
  */
-export async function planTask(task: string, availableToolsSummary: string, signal?: AbortSignal, providers?: { primary?: NeedleProvider; escalation?: ModelProvider }): Promise<AgentPlan> {
+export async function planTask(
+  task: string,
+  availableToolsSummary: string,
+  signal?: AbortSignal,
+  providers?: { primary?: NeedleProvider; escalation?: ModelProvider },
+  toolDecls?: PlanToolDecl[],
+): Promise<AgentPlan> {
   const needle = providers?.primary ?? new NeedleProvider();
   try {
+    if (toolDecls && toolDecls.length) {
+      return await planIterative(needle, task, toolDecls, signal);
+    }
     const res = await needle.generate({
       prompt: `Break this task into ordered steps. Emit one define_step call per step.\n\nTask: ${task}\n\nAvailable capabilities:\n${availableToolsSummary.slice(0, 1500)}`,
       signal,

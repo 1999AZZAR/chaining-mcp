@@ -55,7 +55,10 @@ export async function runAgentWorkflow(input: AgentWorkflowInput): Promise<{
 }> {
   const state = new AgentStateManager();
   const toolsSummary = input.toolSchemas.map(t => `${t.name}: ${t.description || ''}`).join('\n');
-  const plan = await planTask(input.task, toolsSummary, input.signal, input.providers);
+  const plan = await planTask(
+    input.task, toolsSummary, input.signal, input.providers,
+    input.toolSchemas.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
+  );
 
   const registry = new Set(input.toolSchemas.map(t => t.name));
   for (const s of plan.steps) if (s.tool) registry.add(s.tool);

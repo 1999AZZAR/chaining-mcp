@@ -110,7 +110,10 @@ export class RequestHandlers {
         if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true') {
           try {
             const { planTask } = await import('../agent/agent.js');
-            const plan = await planTask(args.task, summary);
+            const plan = await planTask(
+              args.task, summary, undefined, undefined,
+              tools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
+            );
             return {
               ok: true,
               source: 'needle',

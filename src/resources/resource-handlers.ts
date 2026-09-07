@@ -195,6 +195,11 @@ export class ResourceHandlers {
       case 'chaining://llm/usage':
         return this.llmManager ? this.llmManager.getUsage() : { callsTotal: 0, promptTokensTotal: 0, completionTokensTotal: 0 };
 
+      case 'chaining://agent/status': {
+        const { agentStatus } = await import('../agent/diagnostics.js');
+        return { ...agentStatus(), timestamp: new Date().toISOString() };
+      }
+
       default:
         throw new Error(`Unknown resource: ${uri}`);
     }

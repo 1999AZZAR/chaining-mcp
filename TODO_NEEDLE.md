@@ -20,12 +20,13 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Escalation failure carries Needle observation count
 - [ ] `tests/agent/` limits + malformed-output tests
 
-## Milestone 3 — Replace `decomposeTask()` [~] Needle-first planner live
-- [x] `planTask()` — constrained `define_step` pseudo-tool → validated `AgentPlan`
+## Milestone 3 — Replace `decomposeTask()` [x] planner fixed live
+- [x] `planTask()` single-shot with REAL tools declared → whole chain in one `function_calls` turn → validated `AgentPlan`
+- [x] Key finding: `define_step` pseudo-tool and meta "next step?" framing both refused; bare-task + real tools works
+- [x] No confidence gate in planning (no side effects; multi-call chains calibrate low)
 - [x] Fallback chain: Needle → OpenRouter → legacy heuristic
-- [x] `llm_decompose_task` handler routes via `planTask()` when `MITOSIS_AGENT_ENABLED=true` (legacy shape preserved, `source` field added)
-- [ ] Single-step plans for trivial tasks; parallelizable steps (quality tuning)
-- [ ] Remove hardcoded fallback (only after benchmark)
+- [x] `llm_decompose_task` + `runAgentWorkflow` pass structured decls
+- [ ] Parallelizable steps (currently linear dependsOn chain)
 
 ## Loop reliability fixes (live findings)
 - [x] Compact observations (was: full history JSON blob → confidence collapse)
@@ -71,10 +72,13 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 ## Milestone 7 — Remove heuristic cognition (only after benchmark wins)
 - [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
 - [ ] Keep deterministic validation/safety/fast paths
+- [x] M7 evidence (`tests/agent/compare.test.mjs`): heuristic 0/3 expected-tool hits BY CONSTRUCTION (emits categories only); Needle 3/3 with real tools (~1.5–4.5s first-try). OpenRouter arm skipped keyless.
+- [ ] Still needs: OpenRouter arm with key + repeated runs for variance bounds before deleting anything
 
-## Benchmarks (`tests/agent/`) [x] suite live, 48/48 green
-- [x] `npm run test:agent` — 42 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, workflow/transport/registry, surface)
-- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 6 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`)
+## Benchmarks (`tests/agent/`) [x] suite live, 55/55 green (1 skipped: openrouter arm, keyless)
+- [x] `npm run test:agent` — 47 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, workflow/transport/registry, surface, replan, parallel, circular, failFast)
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 8 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison)
+- [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
 - [ ] Replanning / multi-observation / circular-dependency cases
 - [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)
 
