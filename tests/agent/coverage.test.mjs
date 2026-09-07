@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { agentRun } from './.dist/agent/agent.js';
 import { planToWorkflow } from './.dist/agent/workflow.js';
+import { parallelize } from './.dist/agent/agent.js';
 import { WorkflowOrchestrator } from './.dist/managers/workflow-orchestrator.js';
 
 const call = (tool, args = {}) => JSON.stringify({ action: 'call_tool', tool, args });
@@ -84,5 +85,39 @@ describe('replanning and multi-observation', () => {
       ],
     });
     assert.equal(r.status, 'failed');
+  });
+});
+
+describe('parallelize (evidence-based dependencies)', () => {
+  test('task-grounded literals run parallel', () => {
+    const out = parallelize([
+      { step: 1, task: 'a', tool: 'weather', args: { city: 'Jakarta' } },
+      { step: 2, task: 'b', tool: 'lights', args: { room: 'living room', on: true } },
+    ], 'get weather in Jakarta and turn on living room lights');
+    assert.deepEqual(out.map(s => s.dependsOn), [[], []]);
+  });
+
+  test('output references chain to prior step', () => {
+    const out = parallelize([
+      { step: 1, task: 'a', tool: 'search', args: { q: 'Zhang Wei' } },
+      { step: 2, task: 'b', tool: 'send', args: { to: 'uid-4821', text: 'hi' } },
+    ], 'findZhang Wei and text her hi');
+    assert.deepEqual(out.map(s => s.dependsOn), [[], [1]]);
+  });
+
+  test('numbers and booleans never force serialization', () => {
+    const out = parallelize([
+      { step: 1, task: 'a', tool: 'lights', args: { brightness: 30 } },
+      { step: 2, task: 'b', tool: 'thermo', args: { temp: 21, mode: 'cool' } },
+    ], 'dim lights and cool the room');
+    assert.deepEqual(out.map(s => s.dependsOn), [[], []]);
+  });
+
+  test('nested arg references detected', () => {
+    const out = parallelize([
+      { step: 1, task: 'a', tool: 'fetch', args: { url: 'http://x' } },
+      { step: 2, task: 'b', tool: 'write', args: { files: [{ path: '/tmp/out', content: '$step-1.body' }] } },
+    ], 'fetch a page and save it');
+    assert.deepEqual(out.map(s => s.dependsOn), [[], [1]]);
   });
 });

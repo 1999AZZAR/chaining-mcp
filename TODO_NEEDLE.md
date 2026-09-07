@@ -20,13 +20,13 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Escalation failure carries Needle observation count
 - [ ] `tests/agent/` limits + malformed-output tests
 
-## Milestone 3 — Replace `decomposeTask()` [x] planner fixed live
+## Milestone 3 — Replace `decomposeTask()` [x] planner + parallelization live
 - [x] `planTask()` single-shot with REAL tools declared → whole chain in one `function_calls` turn → validated `AgentPlan`
 - [x] Key finding: `define_step` pseudo-tool and meta "next step?" framing both refused; bare-task + real tools works
 - [x] No confidence gate in planning (no side effects; multi-call chains calibrate low)
-- [x] Fallback chain: Needle → OpenRouter → legacy heuristic
-- [x] `llm_decompose_task` + `runAgentWorkflow` pass structured decls
-- [ ] Parallelizable steps (currently linear dependsOn chain)
+- [x] `parallelize()` — evidence-based dependsOn: step chains only on args referencing non-task values (placeholders, looked-up ids); task-grounded literals run parallel
+- [x] Fallback chain: Needle → OpenRouter → honest throw (M7: no heuristic)
+- [x] `llm_decompose_task` + `runAgentWorkflow` pass structured decls + guidance
 
 ## Loop reliability fixes (live findings)
 - [x] Compact observations (was: full history JSON blob → confidence collapse)
@@ -85,9 +85,11 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Kept: deterministic validation/registry/retries/budgets/saturation/limits, optimizer route ranking (labeled fast path), `summarize` truncation
 - [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~2.5–7.5s); OpenRouter arm proven live against vault key
 
-## Benchmarks (`tests/agent/`) [x] suite live, 75/75 green (keyed, 0 skipped)
-- [x] `npm run test:agent` — 63 mock-provider tests
+## Benchmarks (`tests/agent/`) [x] suite live, 75/75 green (keyed, 0 skipped) + 20-task battery
+- [x] `npm run test:agent` — 68 mock-provider tests (incl. `parallelize` evidence rules)
 - [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 12 engine tests (incl. keyed OpenRouter arm, 3-case comparison, handler `agent_run`, refined steps, Needle-backed analysis, 7-tool catalogue)
+- [x] `bench:battery` (`scripts/bench-battery.mjs`, 20 tasks × 3 runs, live): 18/20 fully valid, mean recall 0.825, mean 1270ms/plan, parallel share 0.97
+- [x] Known weak spots (honest): vague tasks refuse ("turn off all the lights", "check disk usage" 0/3); partial chains on 3 two-tool tasks (0.5 recall)
 
 ## Prompt guidance in agent context [x] live, planning 3/3 preserved
 - [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only

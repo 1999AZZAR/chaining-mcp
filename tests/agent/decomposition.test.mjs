@@ -40,12 +40,22 @@ describe('planTask (M7: no heuristic fallback)', () => {
     const plan = await planTask('do things', 'alpha, beta', undefined, {
       primary: nativeCalls([
         { name: 'alpha', arguments: { x: 1 } },
-        { name: 'beta', arguments: {} },
+        { name: 'beta', arguments: { input: 'alpha-output' } },
       ]),
     }, DECLS);
     assert.equal(plan.task, 'do things');
     assert.deepEqual(plan.steps.map(s => s.tool), ['alpha', 'beta']);
-    assert.deepEqual(plan.steps[1].dependsOn, [1]);
+    assert.deepEqual(plan.steps[1].dependsOn, [1]); // references prior output → chained
+  });
+
+  test('task-grounded steps parallelize', async () => {
+    const plan = await planTask('do alpha and beta', 'alpha, beta', undefined, {
+      primary: nativeCalls([
+        { name: 'alpha', arguments: { x: 'alpha' } },
+        { name: 'beta', arguments: { y: 'beta' } },
+      ]),
+    }, DECLS);
+    assert.deepEqual(plan.steps.map(s => s.dependsOn), [[], []]);
   });
 
   test('needle failure falls to openrouter', async () => {

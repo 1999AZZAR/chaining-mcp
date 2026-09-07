@@ -16,6 +16,7 @@
     "needle:fetch": "node scripts/fetch-needle.mjs",
     "test:agent": "node scripts/test-agent.mjs",
     "test:agent:live": "NEEDLE_LIVE=1 node scripts/test-agent.mjs",
+    "bench:battery": "node scripts/bench-battery.mjs",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [

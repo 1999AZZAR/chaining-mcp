@@ -1147,6 +1147,9 @@ node scripts/test-agent.mjs
 
 # Run the agent suite against the live bundled engine
 NEEDLE_LIVE=1 node scripts/test-agent.mjs
+
+# Run the 20-task planning battery (repeated runs, live engine)
+NEEDLE_LIVE=1 node scripts/bench-battery.mjs
 ```
 
 ## Integration with Other MCP Servers

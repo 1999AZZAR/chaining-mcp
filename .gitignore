@@ -114,3 +114,4 @@ memory.db*
 assets/needle/
 # Agent test build output
 tests/agent/.dist/
+tests/agent/bench-results.json

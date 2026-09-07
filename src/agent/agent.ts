@@ -387,14 +387,16 @@ async function planIterative(
     const native = JSON.parse(res.text);
     const calls = (native.function_calls || []).filter((c: { name: string }) => known.has(c.name)).slice(0, maxSteps);
     if (!calls.length) throw new Error('needle produced no plan steps');
+    const rawSteps = calls.map((c: { name: string; arguments: unknown }, i: number) => ({
+      step: i + 1,
+      task: describeArgs(c.name, c.arguments),
+      tool: c.name,
+      args: c.arguments,
+    }));
+    const chained = parallelize(rawSteps, task);
     return AgentPlanSchema.parse({
       task,
-      steps: calls.map((c: { name: string; arguments: unknown }, i: number) => ({
-        step: i + 1,
-        task: describeArgs(c.name, c.arguments),
-        tool: c.name,
-        dependsOn: i > 0 ? [i] : [],
-      })),
+      steps: chained.map(({ step, task: t, tool, dependsOn }) => ({ step, task: t, tool, dependsOn })),
     });
   } finally {
     api.stopServer?.();
@@ -406,6 +408,32 @@ function describeArgs(tool: string, args: unknown): string {
     ? Object.entries(args as Record<string, unknown>).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ')
     : '';
   return entries ? `${tool}(${entries})` : tool;
+}
+
+/**
+ * Evidence-based parallelization (deterministic, not heuristic cognition):
+ * step K depends on step K-1 only if one of its argument values references
+ * something NOT present in the task text (i.e. it must come from a prior
+ * step's output — placeholders, generated ids, looked-up values). Fully
+ * task-grounded literals are independent and may run in the same batch.
+ */
+export function parallelize(
+  steps: Array<{ step: number; task: string; tool: string; args?: unknown }>,
+  taskText: string,
+): Array<{ step: number; task: string; tool: string; dependsOn: number[] }> {
+  const haystack = taskText.toLowerCase();
+  return steps.map((s, i) => {
+    if (i === 0) return { step: s.step, task: s.task, tool: s.tool, dependsOn: [] as number[] };
+    const values: string[] = [];
+    const collect = (v: unknown): void => {
+      if (typeof v === 'string') values.push(v);
+      else if (Array.isArray(v)) v.forEach(collect);
+      else if (v && typeof v === 'object') Object.values(v).forEach(collect);
+    };
+    collect((s as { args?: unknown }).args);
+    const needsPrior = values.some(v => v.length > 0 && !haystack.includes(v.toLowerCase()));
+    return { step: s.step, task: s.task, tool: s.tool, dependsOn: needsPrior ? [s.step - 1] : [] };
+  });
 }
 
 /**
