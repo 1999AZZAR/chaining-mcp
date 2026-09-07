@@ -75,6 +75,19 @@ export class ChainingMCPServer {
       this.llmManager
     );
 
+    // Milestone 8: workflow steps execute against the real local tool
+    // implementations. Self-recursive entries are refused so a workflow or
+    // agent run can never invoke itself.
+    const NON_REENTRANT = new Set(['workflow_orchestrator', 'agent_run']);
+    this.workflowOrchestrator.setTransport((serverName, toolName, parameters, signal) => {
+      if (NON_REENTRANT.has(toolName)) {
+        return Promise.reject(new Error(`tool '${toolName}' is not re-entrant inside workflows`));
+      }
+      void serverName;
+      void signal;
+      return this.requestHandlers.handleToolCall(toolName, parameters);
+    });
+
     // Initialize MCP server
     this.server = new Server(
       {

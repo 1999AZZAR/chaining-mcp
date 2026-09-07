@@ -163,7 +163,13 @@ export class NeedleProvider implements ModelProvider {
   }
 
   stopServer(): void {
-    try { this.server?.kill(); } catch { /* best effort */ }
+    const proc = this.server;
+    try { proc?.kill(); } catch { /* best effort */ }
+    // SIGKILL fallback so a wedged engine can never linger and hold its port.
+    if (proc && !proc.killed) {
+      const t = setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* best effort */ } }, 2000);
+      t.unref?.();
+    }
     this.server = undefined;
     this.serverToolsHash = undefined;
     this.activePort = undefined;

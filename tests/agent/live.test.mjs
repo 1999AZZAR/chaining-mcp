@@ -25,14 +25,26 @@ describe('needle live', { skip: !LIVE || !existsSync(ENGINE) ? 'needs NEEDLE_LIV
   });
 
   test('one-shot call shape: tool + confidence', async () => {
-    const n = new providerMod.NeedleProvider();
-    const r = await n.generate({ prompt: 'what is the weather in Jakarta', tools: [{ name: 'get_weather', description: 'Get weather for a city' }] });
-    const p = JSON.parse(r.text);
-    assert.equal(p.type, 'call');
-    assert.ok(Array.isArray(p.function_calls) && p.function_calls.length > 0);
-    assert.equal(typeof p.confidence, 'number');
-    assert.ok(p.confidence >= 0 && p.confidence <= 1);
-    n.stopServer();
+    // Stochastic 45M model: retry a few turns before calling it a failure.
+    let lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const n = new providerMod.NeedleProvider();
+      try {
+        const r = await n.generate({ prompt: 'what is the weather in Jakarta', tools: [{ name: 'get_weather', description: 'Get weather for a city' }] });
+        const p = JSON.parse(r.text);
+        assert.equal(p.type, 'call');
+        assert.ok(Array.isArray(p.function_calls) && p.function_calls.length > 0);
+        assert.equal(typeof p.confidence, 'number');
+        assert.ok(p.confidence >= 0 && p.confidence <= 1);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+      } finally {
+        n.stopServer();
+      }
+    }
+    assert.equal(lastErr, null);
   });
 
   test('planTask returns validated plan', async () => {

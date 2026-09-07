@@ -77,7 +77,7 @@ export const coreChainingTools: Tool[] = [
   },
   {
     name: 'sequentialthinking',
-    description: 'A detailed tool for dynamic and reflective problem-solving through thoughts',
+    description: 'A detailed tool for dynamic and reflective problem-solving through thoughts. [Legacy compat API — prefer agent_run when MITOSIS_AGENT_ENABLED=true.]',
     inputSchema: {
       type: 'object',
       properties: {

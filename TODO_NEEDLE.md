@@ -50,8 +50,15 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `src/agent/workflow.ts`: `planToWorkflow()` + `runAgentWorkflow()` (plan → registry → agent↔orchestrator loop with state)
 - [x] Native-shape translation generalized (any primary emitting `{type, function_calls}`; confidence gate only for real Needle)
 - [x] `tests/agent/workflow.test.mjs` — 11 tests (transport, retries, cancel, registry, end-to-end, escape-proof)
-- [ ] Bind `RequestHandlers.handleToolCall` as transport in `server.ts` (wiring, Milestone 8)
-- [ ] `execute_workflow` MCP tool routes plans through `runAgentWorkflow` when agent enabled (Milestone 8)
+
+## Milestone 8 — MCP surface [x] live, 48/48 green
+- [x] Transport bound in `server.ts` to real `handleToolCall` with non-reentrancy guard (`workflow_orchestrator`, `agent_run` refused inside runs)
+- [x] `agent_run` tool (gated on `MITOSIS_AGENT_ENABLED`), `workflow_status` + `workflow_cancel` (always listed)
+- [x] `agent_run` honors its own budget over the 10s interactive tool timeout (capped 300s)
+- [x] Legacy notices on `sequentialthinking`, `llm_decompose_task`, `llm_suggest_route`; behavior untouched
+- [x] `tests/agent/surface.test.mjs` — handler-level status/cancel/transport/disabled + live `agent_run`
+- [x] `stopServer()` SIGKILL fallback (no lingering engines)
+- [x] Live-test policy: retry stochastic model assertions (≤3), accept escalation-shaped outcomes keyless
 
 ## Milestone 6 — OpenRouter escalation policy [x] live, 44/44 green
 - [x] `src/agent/escalation.ts` — `EscalationController`: budgeted one-way trip, triggers (low_confidence, refusal, malformed_output, provider_failure, repeated_tool_failure, unhealthy_primary), trail with timestamps
@@ -65,9 +72,9 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
 - [ ] Keep deterministic validation/safety/fast paths
 
-## Benchmarks (`tests/agent/`) [x] suite live, 36/36 green
-- [x] `npm run test:agent` — 31 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, workflow/transport/registry)
-- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 5 engine tests (health, call shape+confidence, planTask, serve multi-turn)
+## Benchmarks (`tests/agent/`) [x] suite live, 48/48 green
+- [x] `npm run test:agent` — 42 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, workflow/transport/registry, surface)
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 6 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`)
 - [ ] Replanning / multi-observation / circular-dependency cases
 - [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)
 

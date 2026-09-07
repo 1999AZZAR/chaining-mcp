@@ -15,7 +15,7 @@ export const llmTools: Tool[] = [
   },
   {
     name: 'llm_decompose_task',
-    description: 'Decompose a complex goal into ordered subtasks with recommended tool categories',
+    description: 'Decompose a complex goal into ordered subtasks with recommended tool categories. [Legacy compat API — routes via the Needle planner when MITOSIS_AGENT_ENABLED=true.]',
     inputSchema: {
       type: 'object',
       properties: {
@@ -26,7 +26,7 @@ export const llmTools: Tool[] = [
   },
   {
     name: 'llm_suggest_route',
-    description: 'Use LLM intelligence to score and rank optimal multi-tool execution routes',
+    description: 'Use LLM intelligence to score and rank optimal multi-tool execution routes. [Legacy compat API — prefer agent_run when MITOSIS_AGENT_ENABLED=true.]',
     inputSchema: {
       type: 'object',
       properties: {

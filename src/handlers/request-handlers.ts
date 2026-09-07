@@ -9,6 +9,7 @@ import { AwesomeCopilotIntegration } from '../integrations/awesome-copilot-integ
 import { BrainstormingManager } from '../managers/brainstorming-manager.js';
 import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
+import { runAgentWorkflow } from '../agent/workflow.js';
 
 export class RequestHandlers {
   constructor(
@@ -25,7 +26,12 @@ export class RequestHandlers {
   ) {}
 
   async handleToolCall(name: string, args: any): Promise<any> {
-    const timeoutMs = parseInt(process.env.CHAINING_TOOL_TIMEOUT_MS || '10000', 10);
+    const defaultMs = parseInt(process.env.CHAINING_TOOL_TIMEOUT_MS || '10000', 10);
+    // agent_run carries its own budget (plan + multi-turn inference routinely
+    // exceeds the interactive tool timeout); honor it with an upper bound.
+    const timeoutMs = name === 'agent_run'
+      ? Math.min(Number(args?.maxExecutionMs) || 60000, 300000)
+      : defaultMs;
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`Tool '${name}' execution timed out after ${timeoutMs}ms`)), timeoutMs)
     );
@@ -63,6 +69,11 @@ export class RequestHandlers {
     // Time Management Tools
     if (['get_current_time', 'convert_time'].includes(name)) {
       return await this.handleTimeManagementTool(name, args);
+    }
+
+    // Agent Runtime Tools (Milestone 8)
+    if (['agent_run', 'workflow_status', 'workflow_cancel'].includes(name)) {
+      return await this.handleAgentTool(name, args);
     }
 
     // Prompt & Resource Tools
@@ -670,8 +681,57 @@ export class RequestHandlers {
     }
   }
 
-  private async handleTimeManagementTool(name: string, args: any): Promise<any> {
+  private async handleAgentTool(name: string, args: any): Promise<any> {
     switch (name) {
+      case 'workflow_status': {
+        const status = this.workflowOrchestrator.getWorkflowStatus(String(args.workflowId || ''));
+        if (!status) return { ok: false, error: `unknown workflow '${args.workflowId}'` };
+        return { ok: true, ...status };
+      }
+
+      case 'workflow_cancel': {
+        const cancelled = this.workflowOrchestrator.cancelWorkflow(String(args.workflowId || ''));
+        return cancelled
+          ? { ok: true, workflowId: args.workflowId, status: 'cancelled' }
+          : { ok: false, error: `workflow '${args.workflowId}' is not running or unknown` };
+      }
+
+      case 'agent_run': {
+        if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() !== 'true') {
+          return { ok: false, error: 'agent runtime disabled (set MITOSIS_AGENT_ENABLED=true and fetch the engine)', tool: name };
+        }
+        const tools = this.discovery.getTools();
+        const { plan, workflowId, run, state } = await runAgentWorkflow({
+          task: String(args.task || ''),
+          toolSchemas: tools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
+          orchestrator: this.workflowOrchestrator,
+          limits: {
+            maxIterations: args.maxIterations || 8,
+            maxToolCalls: args.maxToolCalls || 12,
+            maxExecutionMs: args.maxExecutionMs || 60000,
+          },
+        });
+        const sessionId = run.sessionId || '';
+        return {
+          ok: true,
+          workflowId,
+          sessionId,
+          plan: plan.steps,
+          decision: run.decision,
+          toolCalls: run.toolCalls,
+          iterations: run.iterations,
+          escalated: run.escalated,
+          escalations: run.escalations,
+          stateStats: sessionId ? state.stats(sessionId) : undefined,
+        };
+      }
+
+      default:
+        throw new Error(`Unknown agent tool: ${name}`);
+    }
+  }
+
+  private async handleTimeManagementTool(name: string, args: any): Promise<any> {    switch (name) {
       case 'get_current_time': {
         const timezone = String(args.timezone || 'UTC');
         const timeResult = this.timeManager.getCurrentTime(timezone);
