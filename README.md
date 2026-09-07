@@ -100,8 +100,8 @@ Mitosis
 - **Sequential Thinking**: One observe → decide → execute agent step per call, recorded in shared `AgentState`; pass `sessionId` to continue a session
 - **Thought Branching**: Revisions and branch markers map to first-class state events
 - **Context Preservation**: Bounded per-session history (observations, decisions, tool calls/results) feeds each turn
-- **Brainstorming**: Generate creative ideas using multiple approaches (creative, analytical, practical, innovative)
-- **Idea Evaluation**: Automatic evaluation and prioritization of generated ideas
+- **Brainstorming**: Real model-generated ideas via OpenRouter (key required) — template ideas with random scores removed
+- **Idea Evaluation**: Model-generated pros/cons per idea; no fabricated numeric scores
 - **Workflow Orchestration**: Execute complex multi-server workflows with dependency management
 
 ### Time Management
@@ -366,26 +366,16 @@ Analyzes available tools from discovered MCP servers.
 
 #### 3. `generate_route_suggestions`
 
-Generates optimal route suggestions for a given task.
+Returns the Needle-planned tool chain as the single suggested route — no heuristic ranker. Confidence is the registry-resolution share (planned tools found in discovery), a real metric.
 
 ![Blotcat drawing a red continuous route map on a wall to connect scattered tools](assets/chaining-illustrations/02-route.jpg)
 
 **Input**:
 
 - `task` (required): The task or problem to solve
-- `criteria` (optional): Optimization criteria object
+- `criteria` (optional): Accepted but currently informational; the Needle plan drives the route
 
-**Criteria Options**:
-
-- `prioritizeSpeed`: Optimize for speed
-- `prioritizeSimplicity`: Optimize for simplicity
-- `prioritizeReliability`: Optimize for reliability
-- `maxComplexity`: Maximum complexity level (1-10)
-- `maxDuration`: Maximum duration in milliseconds
-- `requiredCapabilities`: Array of required capabilities
-- `excludedTools`: Array of tools to exclude
-
-**Output**: JSON object containing suggested routes with tools, estimated duration, complexity, confidence, and reasoning.
+**Output**: JSON object with one validated route: registry tools, estimated duration from discovery metadata, complexity (step count), confidence, and grounding reasoning.
 
 #### 4. `analyze_with_sequential_thinking`
 
@@ -454,25 +444,16 @@ Think one step with the Mitosis agent: your thought is recorded as an observatio
 
 #### 9. `brainstorming`
 
-Generate creative ideas and solutions for problems using different brainstorming approaches.
+Generate creative ideas with a generative model. Requires `CHAINING_LLM_ENABLED=true` with `OPENROUTER_API_KEY` — without a key it fails honestly. Template ideas with random scores were removed: Needle is a tool-calling router, not a text generator, so ideation goes to OpenRouter.
 
 **Input**:
 
 - `topic` (required): The topic or problem to brainstorm about
 - `context` (optional): Additional context or background information
 - `approach` (optional): The brainstorming approach ('creative', 'analytical', 'practical', 'innovative') - defaults to 'creative'
-- `ideaCount` (optional): Number of ideas to generate (3-20) - defaults to 10
-- `includeEvaluation` (optional): Whether to include evaluation and prioritization - defaults to true
-- `constraints` (optional): Array of constraints or requirements to consider
+- `ideaCount` (optional): Number of ideas to generate (1-20) - defaults to 8
 
-**Output**: JSON object containing generated ideas with feasibility, innovation, and effort metrics, plus evaluation and recommendations.
-
-**Approaches**:
-
-- `creative`: Generate innovative and unconventional ideas
-- `analytical`: Data-driven and logical solution generation
-- `practical`: Realistic and implementable solutions
-- `innovative`: Cutting-edge approaches combining multiple perspectives
+**Output**: JSON object with model-generated ideas (`content`, `category`, `pros`, `cons`) and `source: 'openrouter'` — no fabricated feasibility scores.
 
 #### 10. `workflow_orchestrator`
 
@@ -627,14 +608,13 @@ Intelligently decomposes complex multi-step development goals into structured, o
 
 #### 21. `llm_suggest_route`
 
-Analyzes task requirements and uses internal AI to rank and score the optimal tool execution chain, with instant heuristic fallback when LLM is offline.
+Returns the Needle-planned tool chain as the suggested route — the heuristic route list is gone. Fails honestly when neither Needle nor OpenRouter can plan.
 
 **Input**:
 
-- `task` (required): Task to optimize routes for
-- `criteria` (optional): Routing constraints (speed, reliability, complexity)
+- `task` (required): Task to plan a route for
 
-**Output**: JSON object with top routes, confidence scores, and reasoning breakdown.
+**Output**: JSON object with the validated route (`source: 'needle'`), registry tools, and grounding reasoning.
 
 #### 22. `llm_summarize`
 
@@ -1070,10 +1050,10 @@ console.log(llmStatus, llmUsage);
 ### Zero-Key & Offline Autonomous Operation
 
 The server is built to run seamlessly in 100% offline, zero-key environments:
-- **No `OPENROUTER_API_KEY`**: The Needle agent still plans, decides, executes, and completes locally. Escalation paths report a budgeted, recorded failure instead of working.
+- **No `OPENROUTER_API_KEY`**: The Needle agent still plans, decides, executes, and completes locally. Escalation paths report a budgeted, recorded failure instead of working. Exception: `brainstorming` needs a generative model and fails honestly without a key (template ideas were removed rather than faked).
 - **No `GITHUB_TOKEN`**: Awesome Copilot tools (`search_instructions`, `load_instruction`) operate from the local bundled catalog with zero network requirements.
 - **No model env vars**: The Needle 2 engine is bundled (`npm run needle:fetch`) and auto-enables when present.
-- **Core Orchestration**: All core tools, agent runtime, brainstorming, workflow runners, time management, prompts, and resources run locally.
+- **Core Orchestration**: All core tools, agent runtime, workflow runners, time management, prompts, and resources run locally.
 
 ## Development
 
@@ -1088,7 +1068,6 @@ src/
 │   ├── discovery.ts                   # Server discovery logic with 60s TTL caching
 │   └── optimizer.ts                   # Route optimization & fallback algorithms
 ├── managers/
-│   ├── brainstorming-manager.ts       # Multi-approach brainstorming generator
 │   ├── workflow-orchestrator.ts       # Workflow execution: transport seam, real retries, cancellation
 │   ├── reliability-manager.ts         # System reliability & health monitoring
 │   ├── time-manager.ts                # Time and timezone management with DST

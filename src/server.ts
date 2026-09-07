@@ -12,7 +12,6 @@ import { SmartRouteOptimizer } from './core/optimizer.js';
 import { TimeManager } from './managers/time-manager.js';
 import { PromptRegistry } from './prompts/prompt-registry.js';
 import { AwesomeCopilotIntegration } from './integrations/awesome-copilot-integration.js';
-import { BrainstormingManager } from './managers/brainstorming-manager.js';
 import { WorkflowOrchestrator } from './managers/workflow-orchestrator.js';
 import { LLMManager } from './managers/llm-manager.js';
 
@@ -28,7 +27,6 @@ export class ChainingMCPServer {
   private timeManager: TimeManager;
   private promptRegistry: PromptRegistry;
   private awesomeCopilotIntegration: AwesomeCopilotIntegration;
-  private brainstormingManager: BrainstormingManager;
   private workflowOrchestrator: WorkflowOrchestrator;
   private llmManager: LLMManager;
   private resourceHandlers: ResourceHandlers;
@@ -42,7 +40,6 @@ export class ChainingMCPServer {
     this.timeManager = new TimeManager();
     this.promptRegistry = new PromptRegistry();
     this.awesomeCopilotIntegration = new AwesomeCopilotIntegration();
-    this.brainstormingManager = new BrainstormingManager();
     this.workflowOrchestrator = new WorkflowOrchestrator();
     this.llmManager = new LLMManager();
 
@@ -61,7 +58,6 @@ export class ChainingMCPServer {
       this.timeManager,
       this.promptRegistry,
       this.awesomeCopilotIntegration,
-      this.brainstormingManager,
       this.workflowOrchestrator,
       this.llmManager
     );

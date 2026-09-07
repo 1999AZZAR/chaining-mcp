@@ -14,7 +14,7 @@ function handlers(transport) {
   if (transport) o.setTransport(transport);
   const h = new RequestHandlers(
     { getTools: () => fakeTools },
-    {}, {}, {}, {}, {},
+    {}, {}, {}, {},
     o, undefined,
   );
   return { h, o };
@@ -57,6 +57,19 @@ describe('M8 handler surface', () => {
     assert.equal(r.ok, false);
     assert.match(r.error, /disabled/);
     delete process.env.MITOSIS_AGENT_ENABLED;
+  });
+
+  test('brainstorming keyless fails honestly (no template ideas)', async () => {
+    const saved = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      const { h } = handlers(localTransport);
+      const r = await h.handleToolCall('brainstorming', { topic: 'onboarding', thoughtNumber: 1, totalThoughts: 1, nextThoughtNeeded: false });
+      assert.equal(r.ok, false);
+      assert.match(r.error, /generative model/);
+    } finally {
+      if (saved !== undefined) process.env.OPENROUTER_API_KEY = saved;
+    }
   });
 });
 
@@ -114,5 +127,22 @@ describe('M8 agent_run live', { skip: process.env.NEEDLE_LIVE === '1' ? false : 
     assert.ok(r.suggestions[0].tools.length >= 1);
     assert.ok(!JSON.stringify(r).match(/REVERSE ENGINEERING|COOKING ANALOGY|SERENDIPITY/));
     delete process.env.MITOSIS_AGENT_ENABLED;
+  });
+
+  test('route suggestions come from Needle, not heuristic ranker', async () => {
+    const { h } = handlers(localTransport);
+    const r = await h.handleToolCall('generate_route_suggestions', { task: 'get weather in Jakarta' });
+    assert.equal(r.source, 'needle');
+    assert.equal(r.totalRoutes, 1);
+    assert.ok(r.routes[0].reasoning.includes('Needle'));
+    process.env.CHAINING_LLM_ENABLED = 'true';
+    try {
+      const r2 = await h.handleToolCall('llm_suggest_route', { task: 'get weather in Jakarta' });
+      assert.equal(r2.ok, true);
+      assert.equal(r2.source, 'needle');
+      assert.ok(r2.routes[0].tools.length >= 1);
+    } finally {
+      delete process.env.CHAINING_LLM_ENABLED;
+    }
   });
 });

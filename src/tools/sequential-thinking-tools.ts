@@ -3,7 +3,7 @@ import { Tool } from '@modelcontextprotocol/sdk/types.js';
 export const sequentialThinkingTools: Tool[] = [
   {
     name: 'brainstorming',
-    description: 'Generate creative ideas and solutions for problems using different brainstorming approaches',
+    description: 'Generate creative ideas via a generative model (requires CHAINING_LLM_ENABLED with OPENROUTER_API_KEY; fails honestly without a key — no template ideas)',
     inputSchema: {
       type: 'object',
       properties: {

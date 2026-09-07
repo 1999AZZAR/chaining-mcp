@@ -129,7 +129,7 @@ export class NeedleProvider implements ModelProvider {
     this.stopServer();
     await new Promise(r => setTimeout(r, 150)); // let the old port release
     this.activePort = await pickFreePort(this.config.servePort);
-    this.toolsFile = join(tmpdir(), `needle-tools-${Date.now()}.json`);
+    this.toolsFile = join(tmpdir(), `needle-tools-${Date.now()}-${process.pid}-${Math.floor(Math.random() * 1e6)}.json`);
     writeFileSync(this.toolsFile, JSON.stringify(tools));
     const args = ['--tools', this.toolsFile, '--serve', '--port', String(this.activePort)];
     if (this.config.toolIndexPath) args.push('--tool-index', this.config.toolIndexPath);

@@ -73,19 +73,22 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Run result carries `escalations[]` trail (reason, latency context, provider)
 - [x] `tests/agent/escalation.test.mjs` — 8 tests (budget, threshold, no ping-pong, refusal mapping, disabled flag)
 
-## Milestone 7 — Remove heuristic cognition [x] done, 74/74 green (keyed)
+## Milestone 7 — Remove heuristic cognition [x] done, 82/82 green (keyed)
 - [x] Deleted `src/managers/sequential-thinking-manager.ts` (caller-supplied thought storage)
 - [x] Deleted `src/integrations/sequential-integration.ts` (canned templates + Math.random "reasoning")
 - [x] Deleted `planTask` hardcoded `analysis → utility → validation` fallback — throws honestly when Needle + OpenRouter both fail
 - [x] Deleted dead `define_step` pseudo-tool path (proven refused by the model)
 - [x] `LLMManager.decomposeTask` returns `{ok:false, error}` instead of fake subtasks
 - [x] Handler drops `legacy_fallback` merge — `llm_decompose_task` returns Needle plan or honest error
+- [x] Deleted `src/managers/brainstorming-manager.ts` (template ideas + random 6-10 feasibility/innovation/effort) — `brainstorming` is OpenRouter-backed or honest `{ok:false}` (Needle routes, it doesn't generate prose)
+- [x] `generate_route_suggestions` + `llm_suggest_route` reimplemented as Needle-planned single routes; heuristic `generateRoutes` ranker disconnected (optimizer kept for deterministic validation/analysis of caller-supplied chains only)
+- [x] `handleLLMTool` blanket guard → per-case guards (Needle-backed cases work without an LLM manager instance)
 - [x] `sequentialthinking` + `analyze_with_sequential_thinking` are Needle-only paths now (no env gating, no legacy branches)
 - [x] `chaining://sequential/state` rebacked on shared AgentState (URI preserved, content = live sessions)
-- [x] Kept: deterministic validation/registry/retries/budgets/saturation/limits, optimizer route ranking (labeled fast path), `summarize` truncation
+- [x] Kept: deterministic validation/registry/retries/budgets/saturation/limits, `summarize` truncation, discovery fallback tools (connectivity, not cognition)
 - [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~2.5–7.5s); OpenRouter arm proven live against vault key
 
-## Benchmarks (`tests/agent/`) [x] suite live, 75/75 green (keyed, 0 skipped) + 20-task battery
+## Benchmarks (`tests/agent/`) [x] suite live, 82/82 green (keyed, 0 skipped) + 20-task battery
 - [x] `npm run test:agent` — 68 mock-provider tests (incl. `parallelize` evidence rules)
 - [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 12 engine tests (incl. keyed OpenRouter arm, 3-case comparison, handler `agent_run`, refined steps, Needle-backed analysis, 7-tool catalogue)
 - [x] `bench:battery` (`scripts/bench-battery.mjs`, 20 tasks × 3 runs, live): 18/20 fully valid, mean recall 0.825, mean 1270ms/plan, parallel share 0.97

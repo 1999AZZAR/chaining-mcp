@@ -4,7 +4,6 @@ import { SmartRouteOptimizer } from '../core/optimizer.js';
 import { TimeManager } from '../managers/time-manager.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { AwesomeCopilotIntegration } from '../integrations/awesome-copilot-integration.js';
-import { BrainstormingManager } from '../managers/brainstorming-manager.js';
 import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
 import { runAgentWorkflow } from '../agent/workflow.js';
@@ -18,7 +17,6 @@ export class RequestHandlers {
     private timeManager: TimeManager,
     private promptRegistry: PromptRegistry,
     private awesomeCopilotIntegration: AwesomeCopilotIntegration,
-    private brainstormingManager: BrainstormingManager,
     private workflowOrchestrator: WorkflowOrchestrator,
     private llmManager?: LLMManager
   ) {}
@@ -96,13 +94,19 @@ export class RequestHandlers {
   }
 
   private async handleLLMTool(name: string, args: any): Promise<any> {
-    if (!this.llmManager) {
-      return { ok: false, error: 'LLM manager not initialized', tool: name };
-    }
+    // No blanket llmManager guard: Needle-backed cases (decompose/suggest
+    // when the agent is on) must work without an LLM manager instance.
+    const needLLM = () => {
+      if (!this.llmManager) return { ok: false, error: 'LLM manager not initialized', tool: name };
+      return null;
+    };
 
     switch (name) {
-      case 'llm_query':
-        return await this.llmManager.query(args.prompt, args.systemPrompt);
+      case 'llm_query': {
+        const guard = needLLM();
+        if (guard) return guard;
+        return await this.llmManager!.query(args.prompt, args.systemPrompt);
+      }
 
       case 'llm_decompose_task': {
         const tools = this.discovery.getTools();
@@ -131,32 +135,49 @@ export class RequestHandlers {
             return { ok: false, source: 'needle', error: e instanceof Error ? e.message : String(e) };
           }
         }
-        return await this.llmManager.decomposeTask(args.task, summary);
+        const guard = needLLM();
+        if (guard) return guard;
+        return await this.llmManager!.decomposeTask(args.task, summary);
       }
 
       case 'llm_suggest_route': {
-        const heuristicRoutes = await this.optimizer.generateRoutes(args.task, args.criteria || {});
-        if (!this.llmManager.isEnabled()) {
+        // M7: route suggestion IS Needle planning — no heuristic route list.
+        // The validated plan becomes the single suggested route.
+        try {
+          const { planTask } = await import('../agent/agent.js');
+          const plan = await planTask(
+            String(args.task || ''), '',
+            undefined, undefined,
+            this.agentToolDecls(),
+            this.resolveGuidance(String(args.task || '')),
+          );
+          const byName = new Map(this.discovery.getTools().map(t => [t.name, t]));
+          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
           return {
             ok: true,
-            source: 'heuristic_fallback',
-            routes: heuristicRoutes,
-            reason: 'LLM disabled or OPENROUTER_API_KEY not set',
+            source: 'needle',
+            routes: [{
+              id: `needle_route_${Date.now()}`,
+              name: 'Needle agent route',
+              description: `Validated ${plan.steps.length}-step chain for: ${String(args.task || '').slice(0, 120)}`,
+              tools: planTools,
+              estimatedDuration: planTools.reduce((sum, t: any) => sum + (t.estimatedDuration || 500), 0),
+              complexity: Math.round(plan.steps.length * 10) / 10,
+              confidence: plan.steps.length ? Math.round((planTools.length / plan.steps.length) * 100) / 100 : 0,
+              reasoning: `Needle-selected chain; ${planTools.length}/${plan.steps.length} steps resolved against the registry`,
+            }],
           };
+        } catch (e) {
+          return { ok: false, source: 'needle', error: e instanceof Error ? e.message : String(e) };
         }
-        const prompt = `Given the task: "${args.task}" and criteria: ${JSON.stringify(args.criteria || {})}, rank and refine these routes:\n${JSON.stringify(heuristicRoutes, null, 2)}`;
-        const result = await this.llmManager.query(prompt, 'You are a tool route optimization engine.');
-        return {
-          ok: true,
-          source: result.ok ? 'llm_enhanced' : 'heuristic_fallback',
-          routes: heuristicRoutes,
-          llmAnalysis: result.text || result.error,
-        };
       }
 
-      case 'llm_summarize':
-        const summary = await this.llmManager.summarize(args.content, args.maxWords);
+      case 'llm_summarize': {
+        const guard = needLLM();
+        if (guard) return guard;
+        const summary = await this.llmManager!.summarize(args.content, args.maxWords);
         return { ok: true, summary };
+      }
 
       default:
         throw new Error(`Unknown LLM tool: ${name}`);
@@ -215,25 +236,42 @@ export class RequestHandlers {
           categories: [...new Set(filtered.map(t => t.category))],
         };
 
-      case 'generate_route_suggestions':
-        const routes = await this.optimizer.generateRoutes(args.task, args.criteria || {});
-        return {
-          routes: routes.map(route => ({
-            tools: route.tools,
-            estimatedDuration: route.estimatedDuration,
-            complexity: route.complexity,
-            confidence: route.confidence,
-            reasoning: route.reasoning,
-          })),
-          totalRoutes: routes.length,
-        };
+      case 'generate_route_suggestions': {
+        // M7: heuristic route ranking removed — suggestions come from the
+        // Needle planner (single validated route). The optimizer remains for
+        // deterministic validation/analysis of caller-supplied chains only.
+        try {
+          const { planTask } = await import('../agent/agent.js');
+          const plan = await planTask(
+            String(args.task || ''), '',
+            undefined, undefined,
+            this.agentToolDecls(),
+            this.resolveGuidance(String(args.task || '')),
+          );
+          const byName = new Map(this.discovery.getTools().map(t => [t.name, t]));
+          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
+          return {
+            source: 'needle',
+            routes: [{
+              tools: planTools.map(t => t.name),
+              estimatedDuration: planTools.reduce((sum, t: any) => sum + (t.estimatedDuration || 500), 0),
+              complexity: Math.round(plan.steps.length * 10) / 10,
+              confidence: plan.steps.length ? Math.round((planTools.length / plan.steps.length) * 100) / 100 : 0,
+              reasoning: `Needle-selected chain of ${plan.steps.length} step(s) grounded in registry tools`,
+            }],
+            totalRoutes: 1,
+          };
+        } catch (e) {
+          return { ok: false, source: 'needle', error: e instanceof Error ? e.message : String(e) };
+        }
+      }
 
       case 'analyze_with_sequential_thinking': {
         const availableTools = this.discovery.getTools();
         // Needle-backed: the plan IS the sequential analysis — one validated
         // tool chain instead of canned template thoughts. No remote MCP and
-        // no heuristic fallback here; planTask itself falls back to
-        // OpenRouter, then to the legacy heuristic, when Needle cannot plan.
+        // no heuristic fallback here; planTask throws honestly when neither
+        // Needle nor OpenRouter can plan.
         const { planTask } = await import('../agent/agent.js');
         const plan = await planTask(
           String(args.problem || ''), '',
@@ -704,36 +742,47 @@ export class RequestHandlers {
 
   private async handleSequentialThinkingTool(name: string, args: any): Promise<any> {
     switch (name) {
-      case 'brainstorming':
-        const brainstormingResult = await this.brainstormingManager.generateIdeas(args);
-        return {
-          topic: brainstormingResult.topic,
-          approach: brainstormingResult.approach,
-          ideas: brainstormingResult.ideas.map(idea => ({
-            id: idea.id,
-            content: idea.content,
-            category: idea.category,
-            feasibility: idea.feasibility,
-            innovation: idea.innovation,
-            effort: idea.effort,
-            pros: idea.pros,
-            cons: idea.cons,
-          })),
-          evaluation: brainstormingResult.evaluation ? {
-            topIdeas: brainstormingResult.evaluation.topIdeas.map(idea => ({
-              id: idea.id,
-              content: idea.content,
-              category: idea.category,
-              feasibility: idea.feasibility,
-              innovation: idea.innovation,
-              effort: idea.effort,
+      case 'brainstorming': {
+        // M7: template ideas + random scores deleted. Ideation needs a
+        // generative model — OpenRouter provides it, otherwise honest failure.
+        // (Needle is a tool-calling router, not a text generator.)
+        if (!this.llmManager?.isEnabled()) {
+          return {
+            ok: false, source: 'none',
+            error: 'brainstorming needs a generative model (set CHAINING_LLM_ENABLED=true with OPENROUTER_API_KEY); template ideas with random scores were removed in M7',
+            tool: name,
+          };
+        }
+        const count = Math.min(Math.max(Number(args.ideaCount) || 8, 1), 20);
+        const prompt = `Brainstorm ${count} distinct ideas about: "${args.topic || ''}".` +
+          (args.context ? ` Context: ${args.context}.` : '') +
+          ` Approach: ${args.approach || 'creative'}.` +
+          (args.constraints?.length ? ` Constraints: ${args.constraints.join('; ')}.` : '') +
+          `\nRespond strictly as a JSON array: [{"content":"...","category":"...","pros":["..."],"cons":["..."]}]`;
+        const result = await this.llmManager.query(prompt, 'You are a creative ideation engine. Output valid JSON only, no fences.');
+        if (!result.ok || !result.text) {
+          return { ok: false, source: 'openrouter', error: result.error || 'ideation unavailable' };
+        }
+        try {
+          const cleaned = result.text.replace(/```json/g, '').replace(/```/g, '').trim();
+          const ideas = JSON.parse(cleaned);
+          if (!Array.isArray(ideas) || !ideas.length) throw new Error('empty idea list');
+          return {
+            ok: true, source: 'openrouter',
+            topic: args.topic, approach: args.approach || 'creative',
+            ideas: ideas.slice(0, count).map((idea: any, i: number) => ({
+              id: `idea-${Date.now()}-${i}`,
+              content: String(idea.content || ''),
+              category: String(idea.category || args.approach || 'creative'),
+              pros: Array.isArray(idea.pros) ? idea.pros.map(String) : [],
+              cons: Array.isArray(idea.cons) ? idea.cons.map(String) : [],
             })),
-            recommendedApproach: brainstormingResult.evaluation.recommendedApproach,
-            considerations: brainstormingResult.evaluation.considerations,
-          } : undefined,
-          timestamp: brainstormingResult.timestamp,
-          metadata: brainstormingResult.metadata,
-        };
+            timestamp: new Date().toISOString(),
+          };
+        } catch (e) {
+          return { ok: false, source: 'openrouter', error: `unparseable ideation output: ${e instanceof Error ? e.message : String(e)}` };
+        }
+      }
 
       case 'workflow_orchestrator':
         const workflowResult = await this.workflowOrchestrator.executeWorkflow(args);
