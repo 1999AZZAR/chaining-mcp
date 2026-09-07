@@ -8,7 +8,8 @@ import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
 import { runAgentWorkflow } from '../agent/workflow.js';
 import { isAgentEnabled } from '../agent/diagnostics.js';
-import { buildGuidance } from '../agent/guidance.js';
+import { buildGuidance, buildSkillGuidance } from '../agent/guidance.js';
+import { sharedSkills } from '../skills/skill-discovery.js';
 
 export class RequestHandlers {
   constructor(
@@ -23,13 +24,13 @@ export class RequestHandlers {
 
   async handleToolCall(name: string, args: any): Promise<any> {
     const defaultMs = parseInt(process.env.CHAINING_TOOL_TIMEOUT_MS || '10000', 10);
-    // agent_run carries its own budget (plan + multi-turn inference routinely
-    // exceeds the interactive tool timeout); honor it with an upper bound.
-    // sequentialthinking gets the same treatment when it fronts the agent.
-    const agentFronted = name === 'agent_run' ||
+    // Model-backed tools carry their own budget (planning + multi-turn
+    // inference + engine cold-start routinely exceed the interactive 10s).
+    const modelBacked = name === 'agent_run' || name === 'brainstorming' ||
+      name === 'analyze_with_sequential_thinking' || name === 'suggest_skill_chain' ||
       (name === 'sequentialthinking' && isAgentEnabled());
-    const timeoutMs = agentFronted
-      ? Math.min(Number(args?.maxExecutionMs) || 60000, 300000)
+    const timeoutMs = modelBacked
+      ? Math.min(Number(args?.maxExecutionMs) || 90000, 300000)
       : defaultMs;
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`Tool '${name}' execution timed out after ${timeoutMs}ms`)), timeoutMs)
@@ -73,6 +74,11 @@ export class RequestHandlers {
     // Agent Runtime Tools (Milestone 8)
     if (['agent_run', 'workflow_status', 'workflow_cancel'].includes(name)) {
       return await this.handleAgentTool(name, args);
+    }
+
+    // Skills Management Tools
+    if (['list_skills', 'search_skills', 'get_skill', 'suggest_skill_chain'].includes(name)) {
+      return await this.handleSkillTool(name, args);
     }
 
     // Prompt & Resource Tools
@@ -193,13 +199,18 @@ export class RequestHandlers {
     }));
   }
 
-  /** Task-relevant prebuilt-prompt guidance for agent context (local, capped). */
+  /** Task-relevant prebuilt-prompt + skill guidance for agent context (local, capped). */
   private resolveGuidance(task: string): string {
+    const parts: string[] = [];
     try {
-      return buildGuidance(this.promptRegistry, task, this.discovery.getTools().map(t => t.name));
-    } catch {
-      return '';
-    }
+      const prompts = buildGuidance(this.promptRegistry, task, this.discovery.getTools().map(t => t.name));
+      if (prompts) parts.push(prompts);
+    } catch { /* guidance never breaks the run */ }
+    try {
+      const skills = buildSkillGuidance(sharedSkills(), task);
+      if (skills) parts.push(`Relevant skills:\n${skills}`);
+    } catch { /* guidance never breaks the run */ }
+    return parts.join('\n');
   }
 
   private async handleCoreChainingTool(name: string, args: any): Promise<any> {
@@ -754,34 +765,47 @@ export class RequestHandlers {
           };
         }
         const count = Math.min(Math.max(Number(args.ideaCount) || 8, 1), 20);
-        const prompt = `Brainstorm ${count} distinct ideas about: "${args.topic || ''}".` +
-          (args.context ? ` Context: ${args.context}.` : '') +
-          ` Approach: ${args.approach || 'creative'}.` +
-          (args.constraints?.length ? ` Constraints: ${args.constraints.join('; ')}.` : '') +
-          `\nRespond strictly as a JSON array: [{"content":"...","category":"...","pros":["..."],"cons":["..."]}]`;
-        const result = await this.llmManager.query(prompt, 'You are a creative ideation engine. Output valid JSON only, no fences.');
-        if (!result.ok || !result.text) {
-          return { ok: false, source: 'openrouter', error: result.error || 'ideation unavailable' };
+        const buildPrompt = (c: number, forceShort: boolean) => {
+          const short = forceShort ? 'Keep every idea under 20 words.' : '';
+          return `Brainstorm ${c} distinct ideas about: "${args.topic || ''}".` +
+            (args.context ? ` Context: ${args.context}.` : '') +
+            ` Approach: ${args.approach || 'creative'}.` +
+            (args.constraints?.length ? ` Constraints: ${args.constraints.join('; ')}.` : '') +
+            ` ${short}\nRespond strictly as a JSON array: [{"content":"...","category":"...","pros":["..."],"cons":["..."]}]`;
+        };
+        const parseIdeas = (raw: string): any[] | null => {
+          const start = raw.indexOf('[');
+          const end = raw.lastIndexOf(']');
+          if (start < 0 || end <= start) return null;
+          try {
+            const arr = JSON.parse(raw.slice(start, end + 1));
+            return Array.isArray(arr) && arr.length ? arr : null;
+          } catch {
+            return null;
+          }
+        };
+        let result = await this.llmManager.query(buildPrompt(count, false), 'You are a creative ideation engine. Output valid JSON only, no fences.');
+        let ideas = result.ok && result.text ? parseIdeas(result.text) : null;
+        if (!ideas) {
+          // Truncated/free-model noise: retry once, shorter.
+          result = await this.llmManager.query(buildPrompt(Math.max(3, count), true), 'You are a creative ideation engine. Output a compact JSON array only.');
+          ideas = result.ok && result.text ? parseIdeas(result.text) : null;
         }
-        try {
-          const cleaned = result.text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const ideas = JSON.parse(cleaned);
-          if (!Array.isArray(ideas) || !ideas.length) throw new Error('empty idea list');
-          return {
-            ok: true, source: 'openrouter',
-            topic: args.topic, approach: args.approach || 'creative',
-            ideas: ideas.slice(0, count).map((idea: any, i: number) => ({
-              id: `idea-${Date.now()}-${i}`,
-              content: String(idea.content || ''),
-              category: String(idea.category || args.approach || 'creative'),
-              pros: Array.isArray(idea.pros) ? idea.pros.map(String) : [],
-              cons: Array.isArray(idea.cons) ? idea.cons.map(String) : [],
-            })),
-            timestamp: new Date().toISOString(),
-          };
-        } catch (e) {
-          return { ok: false, source: 'openrouter', error: `unparseable ideation output: ${e instanceof Error ? e.message : String(e)}` };
+        if (!ideas) {
+          return { ok: false, source: 'openrouter', error: 'ideation output unparseable after retry' };
         }
+        return {
+          ok: true, source: 'openrouter',
+          topic: args.topic, approach: args.approach || 'creative',
+          ideas: ideas.slice(0, count).map((idea: any, i: number) => ({
+            id: `idea-${Date.now()}-${i}`,
+            content: String(idea.content || ''),
+            category: String(idea.category || args.approach || 'creative'),
+            pros: Array.isArray(idea.pros) ? idea.pros.map(String) : [],
+            cons: Array.isArray(idea.cons) ? idea.cons.map(String) : [],
+          })),
+          timestamp: new Date().toISOString(),
+        };
       }
 
       case 'workflow_orchestrator':
@@ -814,8 +838,67 @@ export class RequestHandlers {
     }
   }
 
-  private async handleAgentTool(name: string, args: any): Promise<any> {
+  private async handleSkillTool(name: string, args: any): Promise<any> {
+    const catalog = sharedSkills();
     switch (name) {
+      case 'list_skills': {
+        const skills = catalog.scan();
+        return {
+          ok: true,
+          total: skills.length,
+          skills: skills.map(s => ({ name: s.name, description: s.description, files: s.files.length, bodyChars: s.bodyChars })),
+        };
+      }
+
+      case 'search_skills': {
+        const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 20);
+        const matches = catalog.search(String(args.query || '')).slice(0, limit);
+        return {
+          ok: true, total: matches.length,
+          skills: matches.map(s => ({ name: s.name, description: s.description, files: s.files.length })),
+        };
+      }
+
+      case 'get_skill': {
+        const detail = catalog.get(String(args.name || ''));
+        if (!detail) return { ok: false, error: `unknown skill '${args.name}'` };
+        const maxChars = Math.min(Math.max(Number(args.maxChars) || 8000, 500), 60000);
+        return {
+          ok: true, name: detail.name, description: detail.description,
+          files: detail.files,
+          content: detail.content.length > maxChars ? detail.content.slice(0, maxChars) + '\n…[truncated]' : detail.content,
+        };
+      }
+
+      case 'suggest_skill_chain': {
+        // Needle plans over registry tools; skill recommendations attach per
+        // step via deterministic catalog match (labeled skillHints, not model output).
+        try {
+          const { planTask } = await import('../agent/agent.js');
+          const taskText = String(args.task || '');
+          const plan = await planTask(
+            taskText, '', undefined, undefined,
+            this.agentToolDecls(),
+            this.resolveGuidance(taskText),
+          );
+          return {
+            ok: true, source: 'needle+skills',
+            steps: plan.steps.map(s => ({
+              step: s.step, task: s.task, tool: s.tool, dependsOn: s.dependsOn,
+              skillHints: catalog.search(`${s.task} ${s.tool || ''}`).slice(0, 2).map(x => x.name),
+            })),
+          };
+        } catch (e) {
+          return { ok: false, source: 'needle+skills', error: e instanceof Error ? e.message : String(e) };
+        }
+      }
+
+      default:
+        throw new Error(`Unknown skill tool: ${name}`);
+    }
+  }
+
+  private async handleAgentTool(name: string, args: any): Promise<any> {    switch (name) {
       case 'workflow_status': {
         const status = this.workflowOrchestrator.getWorkflowStatus(String(args.workflowId || ''));
         if (!status) return { ok: false, error: `unknown workflow '${args.workflowId}'` };

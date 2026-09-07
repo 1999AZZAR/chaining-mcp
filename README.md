@@ -28,7 +28,8 @@ Mitosis
 
 - **Bundled engine**: fetch once with `npm run needle:fetch` (downloads the ~15MB Needle 2 engine + weights from `Cactus-Compute/needle2` into gitignored `assets/needle/`). The runtime auto-enables when the engine is present; `MITOSIS_AGENT_ENABLED=false` opts out.
 - **Agent-first tools**: `agent_run` (full plan → execute → observe loop), `sequentialthinking` (one Needle-backed observe → decide → execute step over shared `AgentState`), `analyze_with_sequential_thinking` (the validated plan IS the analysis), plus `workflow_status` / `workflow_cancel`.
-- **Prompt guidance in context**: task-relevant prebuilt prompts (keyword + `expectedTools` overlap, top-2, ≤600 chars, local only) are injected into planning and turn-1 context — the 42-prompt registry now steers the agent, not just human callers.
+- **Prompt guidance in context**: task-relevant prebuilt prompts (keyword + `expectedTools` overlap, top-2, ≤600 chars, local only) are injected into planning and turn-1 context — the 40-prompt registry now steers the agent, not just human callers.
+- **Skills management**: `list_skills` / `search_skills` / `get_skill` (read-only, opencode AgentSkills layout, `MITOSIS_SKILLS_DIRS`) plus `suggest_skill_chain` — Needle plans the tool chain and attaches deterministic per-step skill recommendations, so a harness can execute skills and tools together. Skill descriptions also feed agent context via guidance.
 - **Escalation, not fallback**: OpenRouter (`OPENROUTER_API_KEY`) is used only on low confidence, refusal, malformed output, provider failure, or repeated tool failures — budgeted (`AGENT_MAX_ESCALATIONS`, default 1) with a recorded trail. Without a key the agent still runs fully offline.
 - **Diagnostics**: `chaining://agent/status` reports readiness without spawning the engine and never exposes keys.
 - **Verified**: `node scripts/test-agent.mjs` (mock suite) and `NEEDLE_LIVE=1 node scripts/test-agent.mjs` (live engine suite) — see [Testing](#building--testing).
@@ -583,6 +584,42 @@ Analyze performance metrics and efficiency of tool chains. Provides execution ti
 
 **Output**: JSON object with performance metrics, complexity analysis, and optimization recommendations.
 
+### Skills Management Tools
+
+#### 26. `list_skills`
+
+List all discovered agent skills from the local catalog (name, description, file count). Read-only — never executes skill scripts.
+
+**Input**: none.
+
+#### 27. `search_skills`
+
+Search the skills catalog by keywords against names and descriptions; returns ranked matches.
+
+**Input**:
+
+- `query` (required): Keywords describing the capability needed
+- `limit` (optional): Maximum matches (1-20, default 5)
+
+#### 28. `get_skill`
+
+Load a skill's full instructions (SKILL.md body) plus file manifest for injection into agent context.
+
+**Input**:
+
+- `name` (required): Skill name from `list_skills`/`search_skills`
+- `maxChars` (optional): Truncate body (default 8000, max 60000)
+
+#### 29. `suggest_skill_chain`
+
+Plan a task with Needle over registry tools and attach deterministic skill recommendations per step — one executable skills+tools chain.
+
+**Input**:
+
+- `task` (required): Task to plan a skill+tool chain for
+
+**Output**: Needle-planned steps (`tool`, `dependsOn`) plus per-step `skillHints` from catalog match.
+
 ### Built-in LLM Engine Tools
 
 #### 19. `llm_query`
@@ -1032,6 +1069,7 @@ console.log(llmStatus, llmUsage);
 | `NEEDLE_ENGINE_PATH` | `assets/needle/needle` | Override for non-standard engine locations |
 | `NEEDLE_MODEL_PATH` | `assets/needle/needle2.cact` | Reserved: reported by health checks; the CLI runs the baked base model (no `--weights` flag yet — tuned `.cact` needs a future libneedle path) |
 | `NEEDLE_TOOL_INDEX_PATH` | `assets/needle/tools.idx` | Persisted tool-embedding cache; engine keys it by schema+model fingerprint, safe across toolsets and restarts |
+| `MITOSIS_SKILLS_DIRS` | `~/.config/opencode/skills` | Colon-separated skill catalog directories (opencode AgentSkills layout) |
 | `NEEDLE_CONFIDENCE_THRESHOLD` | `0.6` | Act at/above, escalate below |
 | `NEEDLE_PORT` | `18080` | Preferred serve port (free port picked on conflict) |
 | `CHAINING_LLM_ENABLED` | `false` | Enable built-in OpenRouter LLM intelligence features |
@@ -1099,11 +1137,14 @@ src/
 │   ├── time-management-tools.ts       # Time management tool schemas (2 tools)
 │   ├── prompt-resource-tools.ts       # Prompt/resource tool schemas (4 tools)
 │   ├── validation-analysis-tools.ts   # Validation/analysis tool schemas (2 tools)
-│   └── llm-tools.ts                   # LLM engine tool schemas (4 tools)
+│   ├── skill-tools.ts                 # Skills management schemas (list/search/get/suggest)
+│   ├── llm-tools.ts                   # LLM engine tool schemas (4 tools)
 └── resources/
     ├── resource-registry.ts           # Resource registry dispatcher
-    ├── resource-definitions.ts        # Static resource metadata (17 resources)
+    ├── resource-definitions.ts        # Static resource metadata (18 resources)
     └── resource-handlers.ts           # Dynamic resource content generation
+└── skills/
+    └── skill-discovery.ts             # Local skills catalog: frontmatter, search, TTL cache
 ```
 
 ### Building & Testing

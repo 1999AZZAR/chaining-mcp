@@ -1,4 +1,5 @@
 import type { PrebuiltPrompt } from '../prompts/prompt-definitions.js';
+import type { SkillDiscovery } from '../skills/skill-discovery.js';
 
 /** Minimal surface the guidance builder needs from the prompt registry. */
 export interface GuidanceSource {
@@ -37,6 +38,24 @@ export function buildGuidance(source: GuidanceSource, task: string, toolNames: s
   const top = [...scored.values()].sort((a, b) => b.score - a.score).slice(0, MAX_PROMPTS);
   if (!top.length) return '';
   let out = top.map(({ prompt: p }) => `- ${p.name}: ${p.prompt.slice(0, 220).replace(/\s+/g, ' ')}`).join('\n');
+  if (out.length > maxChars) out = out.slice(0, maxChars) + '…';
+  return out;
+}
+
+/**
+ * Skill guidance for agent context: top catalog matches as compact
+ * name: description lines. Descriptions steer the model; full SKILL.md
+ * bodies stay a `get_skill` call away (far beyond the 256-token window).
+ */
+export function buildSkillGuidance(skills: SkillDiscovery, task: string, maxChars = 300): string {
+  let found;
+  try {
+    found = skills.search(task).slice(0, 3);
+  } catch {
+    return '';
+  }
+  if (!found.length) return '';
+  let out = found.map(s => `- skill ${s.name}: ${s.description.slice(0, 140)}`).join('\n');
   if (out.length > maxChars) out = out.slice(0, maxChars) + '…';
   return out;
 }

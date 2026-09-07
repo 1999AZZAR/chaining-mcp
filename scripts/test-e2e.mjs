@@ -110,6 +110,19 @@ try {
   const seqState = await request('resources/read', { uri: 'chaining://sequential/state' });
   const ssJson = JSON.parse(seqState.result?.contents?.[0]?.text || '{}');
   check('sequential/state lists sessions', typeof ssJson.totalSessions === 'number' && ssJson.totalSessions >= 1, JSON.stringify(ssJson).slice(0, 300));
+
+  // 6. skills surface over real MCP.
+  const skillsList = parse(await request('tools/call', { name: 'list_skills', arguments: {} }));
+  check('list_skills real catalog', skillsList.ok === true && skillsList.total >= 1 && Array.isArray(skillsList.skills), JSON.stringify(skillsList).slice(0, 200));
+  const skillsSearch = parse(await request('tools/call', { name: 'search_skills', arguments: { query: 'skill' } }));
+  check('search_skills ranked matches', skillsSearch.ok === true && skillsSearch.total >= 1, JSON.stringify(skillsSearch).slice(0, 200));
+  const first = skillsList.skills?.[0]?.name || skillsSearch.skills?.[0]?.name;
+  if (first) {
+    const skillGet = parse(await request('tools/call', { name: 'get_skill', arguments: { name: first, maxChars: 2000 } }));
+    check('get_skill full body', skillGet.ok === true && typeof skillGet.content === 'string' && skillGet.content.length > 0, JSON.stringify(skillGet).slice(0, 200));
+  } else {
+    check('get_skill full body', false, 'no skill name available');
+  }
 } catch (e) {
   check('no harness exception', false, e.message);
 } finally {

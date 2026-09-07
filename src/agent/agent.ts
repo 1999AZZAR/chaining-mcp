@@ -381,23 +381,38 @@ async function planIterative(
   const tools = toolDecls.map(t => ({ name: t.name, description: t.description || t.name, schema: t.schema || { type: 'object' } }));
   const known = new Set(tools.map(t => t.name));
   const api = needle as Partial<NeedleProvider>;
+  let lastError: Error | undefined;
   try {
-    const prompt = guidance ? `${task.slice(0, 500)}\n\nGuidance:\n${guidance}` : task.slice(0, 500);
-    const res = await needle.generate({ prompt, signal, tools });
-    const native = JSON.parse(res.text);
-    const calls = (native.function_calls || []).filter((c: { name: string }) => known.has(c.name)).slice(0, maxSteps);
-    if (!calls.length) throw new Error('needle produced no plan steps');
-    const rawSteps = calls.map((c: { name: string; arguments: unknown }, i: number) => ({
-      step: i + 1,
-      task: describeArgs(c.name, c.arguments),
-      tool: c.name,
-      args: c.arguments,
-    }));
-    const chained = parallelize(rawSteps, task);
-    return AgentPlanSchema.parse({
-      task,
-      steps: chained.map(({ step, task: t, tool, dependsOn }) => ({ step, task: t, tool, dependsOn })),
-    });
+    // Small model + single-shot chains occasionally emit truncated JSON or an
+    // empty refusal; one transparent retry smooths the stochastic tail before
+    // falling back to OpenRouter.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const prompt = guidance ? `${task.slice(0, 500)}\n\nGuidance:\n${guidance}` : task.slice(0, 500);
+        const res = await needle.generate({ prompt, signal, tools });
+        const native = JSON.parse(res.text);
+        const calls = (native.function_calls || []).filter((c: { name: string }) => known.has(c.name)).slice(0, maxSteps);
+        if (!calls.length) {
+          lastError = new Error('needle produced no plan steps');
+          continue;
+        }
+        const rawSteps = calls.map((c: { name: string; arguments: unknown }, i: number) => ({
+          step: i + 1,
+          task: describeArgs(c.name, c.arguments),
+          tool: c.name,
+          args: c.arguments,
+        }));
+        const chained = parallelize(rawSteps, task);
+        return AgentPlanSchema.parse({
+          task,
+          steps: chained.map(({ step, task: t, tool, dependsOn }) => ({ step, task: t, tool, dependsOn })),
+        });
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        if (signal?.aborted) throw e;
+      }
+    }
+    throw lastError ?? new Error('needle produced no plan steps');
   } finally {
     api.stopServer?.();
   }
@@ -472,6 +487,11 @@ export async function planTask(
     signal,
   });
   const cleaned = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
-  const steps = JSON.parse(cleaned);
-  return AgentPlanSchema.parse({ task, steps: steps.map((s: Record<string, unknown>) => ({ dependsOn: [], ...s })) });
+  if (!cleaned) throw new Error('escalation provider returned an empty plan');
+  try {
+    const steps = JSON.parse(cleaned);
+    return AgentPlanSchema.parse({ task, steps: steps.map((s: Record<string, unknown>) => ({ dependsOn: [], ...s })) });
+  } catch (e) {
+    throw new Error(`escalation provider returned unparseable plan: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }

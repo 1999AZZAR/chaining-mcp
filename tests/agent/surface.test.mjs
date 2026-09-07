@@ -1,7 +1,11 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RequestHandlers } from './.dist/handlers/request-handlers.js';
 import { WorkflowOrchestrator } from './.dist/managers/workflow-orchestrator.js';
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'skills');
 
 // Milestone 8: exercise the real MCP handler paths with stubbed discovery.
 const fakeTools = [
@@ -69,6 +73,25 @@ describe('M8 handler surface', () => {
       assert.match(r.error, /generative model/);
     } finally {
       if (saved !== undefined) process.env.OPENROUTER_API_KEY = saved;
+    }
+  });
+
+  test('skills catalog: list/search/get over fixtures', async () => {
+    process.env.MITOSIS_SKILLS_DIRS = FIXTURES;
+    try {
+      const { h } = handlers(localTransport);
+      const list = await h.handleToolCall('list_skills', {});
+      assert.equal(list.ok, true);
+      assert.deepEqual(list.skills.map(s => s.name), ['deploy-bot', 'weather-helper']);
+      const search = await h.handleToolCall('search_skills', { query: 'blue-green deploy' });
+      assert.equal(search.skills[0].name, 'deploy-bot');
+      const get = await h.handleToolCall('get_skill', { name: 'weather-helper' });
+      assert.equal(get.ok, true);
+      assert.ok(get.content.includes('plain words'));
+      const miss = await h.handleToolCall('get_skill', { name: 'ghost' });
+      assert.equal(miss.ok, false);
+    } finally {
+      delete process.env.MITOSIS_SKILLS_DIRS;
     }
   });
 });

@@ -99,7 +99,16 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `bench:battery` (`scripts/bench-battery.mjs`, 20 tasks × 3 runs, live): 18/20 fully valid, mean recall 0.825, mean 1270ms/plan, parallel share 0.97
 - [x] Known weak spots (honest): vague tasks refuse ("turn off all the lights", "check disk usage" 0/3); partial chains on 3 two-tool tasks (0.5 recall)
 
-## Prompt guidance in agent context [x] live, planning 3/3 preserved- [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only
+## Skills management [x] live, 76/76 mock + 89/89 live + E2E GREEN
+- [x] `src/skills/skill-discovery.ts` — opencode AgentSkills layout: SKILL.md frontmatter, recursive file manifest, keyword ranking, 10s TTL cache (`MITOSIS_SKILLS_DIRS`), read-only (never executes skill scripts)
+- [x] Tools: `list_skills`, `search_skills`, `get_skill` (deterministic) + `suggest_skill_chain` (Needle plan + per-step skillHints)
+- [x] Skill descriptions feed agent context via `buildSkillGuidance` (guidance path) — harness/agent can use skills automatically, not just tools
+- [x] Model-backed tools get extended timeout (agent_run, brainstorming, analyze_with_sequential_thinking, suggest_skill_chain)
+- [x] Robustness found via e2e: planIterative retry-once (truncated single-shot JSON), brainstorming array-span parse + retry, escalation plan empty/unparseable → clear errors
+- [x] `tests/agent/skills.test.mjs` (fixtures) + surface handler test + e2e skills over real MCP (list/search/get)
+
+## Prompt guidance in agent context [x] live, planning 3/3 preserved
+- [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only
 - [x] Threaded as `guidance` into `planTask` (single-shot prompt), `agentRun` (turn-1 only), `agentStep` (first-step only), `runAgentWorkflow`
 - [x] Handler resolves via real `PromptRegistry` for `agent_run`, `sequentialthinking`, `analyze_with_sequential_thinking`, `llm_decompose_task`
 - [x] `tests/agent/guidance.test.mjs` — retrieval, empty case, overlap-only, caps
