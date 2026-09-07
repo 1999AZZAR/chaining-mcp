@@ -79,6 +79,7 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `tests/agent/escalation.test.mjs` — 8 tests (budget, threshold, no ping-pong, refusal mapping, disabled flag)
 
 ## Milestone 7 — Remove heuristic cognition [x] done, 82/82 green (keyed)
+- [x] **External sequential-thinking dependency fully removed** — deleted `@modelcontextprotocol/server-sequential-thinking` from discovery `essentialServers` and its fallback-tool block (`sequential-thinking|sequential` pattern), so discovery never npx-spawns a remote thinking server (e2e proof: discovered 1 server / 2 tools, was 2/3); optimizer's phantom `sequential_thinking` tool reference removed; stale root `test-smoke.js`/`test-live-llm.js` (imported deleted modules) deleted, `npm test` repointed to the agent suite
 - [x] Deleted `src/managers/sequential-thinking-manager.ts` (caller-supplied thought storage)
 - [x] Deleted `src/integrations/sequential-integration.ts` (canned templates + Math.random "reasoning")
 - [x] Deleted `planTask` hardcoded `analysis → utility → validation` fallback — throws honestly when Needle + OpenRouter both fail

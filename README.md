@@ -1178,7 +1178,7 @@ OPENROUTER_API_KEY=sk-or-xxx CHAINING_LLM_ENABLED=true node scripts/test-e2e.mjs
 
 ## Integration with Other MCP Servers
 
-This server is designed to work seamlessly with other MCP servers in your ecosystem. Sequential thinking is handled locally by the bundled Needle 2 agent — no external sequential-thinking MCP server is required or consulted:
+This server is designed to work seamlessly with other MCP servers in your ecosystem. Sequential thinking is fully built in: the bundled Needle 2 agent decides, AgentState records, and the workflow executor acts — no external sequential-thinking MCP server is required, declared in discovery, or consulted. Discovery's known-server list contains no sequential-thinking entry (verified: the external server + its fallback tool were removed).
 
 ### Awesome Copilot Integration
 

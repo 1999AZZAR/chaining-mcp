@@ -66,19 +66,6 @@ export const defaultDiscoveryConfig: DiscoveryConfig = {
   
   essentialServers: [
     {
-      name: 'sequential-thinking',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-sequential-thinking'],
-      env: {},
-      description: 'Sequential thinking analysis MCP server',
-      version: '1.0.0',
-      capabilities: {
-        tools: true,
-        resources: false,
-        prompts: false
-      }
-    },
-    {
       name: 'awesome-copilot',
       command: 'dotnet',
       args: ['/tmp/awesome-copilot-mcp/src/McpSamples.AwesomeCopilot.HybridApp/bin/Debug/net9.0/McpSamples.AwesomeCopilot.HybridApp.dll'],
@@ -252,33 +239,6 @@ export const defaultDiscoveryConfig: DiscoveryConfig = {
           category: 'knowledge',
           estimatedComplexity: 3,
           estimatedDuration: 1000,
-        }
-      ]
-    },
-    {
-      serverPattern: 'sequential-thinking|sequential',
-      tools: [
-        {
-          name: 'sequentialthinking',
-          description: 'A detailed tool for dynamic and reflective problem-solving through thoughts',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              thought: { type: 'string', description: 'Your current thinking step' },
-              nextThoughtNeeded: { type: 'boolean', description: 'Whether another thought step is needed' },
-              thoughtNumber: { type: 'number', description: 'Current thought number' },
-              totalThoughts: { type: 'number', description: 'Estimated total thoughts needed' },
-              isRevision: { type: 'boolean', description: 'Whether this revises previous thinking' },
-              revisesThought: { type: 'number', description: 'Which thought is being reconsidered' },
-              branchFromThought: { type: 'number', description: 'Branching point thought number' },
-              branchId: { type: 'string', description: 'Branch identifier' },
-              needsMoreThoughts: { type: 'boolean', description: 'If more thoughts are needed' }
-            },
-            required: ['thought', 'nextThoughtNeeded', 'thoughtNumber', 'totalThoughts']
-          },
-          category: 'analysis',
-          estimatedComplexity: 5,
-          estimatedDuration: 2000,
         }
       ]
     },

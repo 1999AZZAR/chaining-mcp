@@ -542,10 +542,12 @@ export class SmartRouteOptimizer {
   }
 
   /**
-   * Select tools that work well with sequential thinking
+   * Select tools that work well for complex analysis. No external
+   * sequential-thinking tool: thinking is Needle-backed in Mitosis, so this
+   * only suggests registry tools for the analysis step.
    */
   private selectSequentialThinkingTools(analysis: TaskAnalysis): string[] {
-    const tools: string[] = ['sequential_thinking'];
+    const tools: string[] = [];
     
     // Add supporting tools
     if (analysis.requiresFileOperations) {
