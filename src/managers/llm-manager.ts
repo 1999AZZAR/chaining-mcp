@@ -178,15 +178,8 @@ Respond strictly in JSON array format:
 
     const result = await this.query(prompt, 'You are a task decomposition engine. Output valid JSON only, without markdown fences.');
     if (!result.ok || !result.text) {
-      // Heuristic fallback
-      return {
-        ok: true,
-        subtasks: [
-          { step: 1, task: `Analyze requirements for ${task}`, recommendedCategory: 'analysis' },
-          { step: 2, task: `Execute main operation for ${task}`, recommendedCategory: 'utility' },
-          { step: 3, task: `Verify and summarize results`, recommendedCategory: 'validation' },
-        ],
-      };
+      // M7: honest failure instead of a fake analysis → utility → validation plan.
+      return { ok: false, error: result.error || 'LLM decomposition unavailable' };
     }
 
     try {
@@ -194,14 +187,7 @@ Respond strictly in JSON array format:
       const subtasks = JSON.parse(cleanJson);
       return { ok: true, subtasks };
     } catch {
-      return {
-        ok: true,
-        subtasks: [
-          { step: 1, task: `Analyze requirements for ${task}`, recommendedCategory: 'analysis' },
-          { step: 2, task: `Execute primary workflow`, recommendedCategory: 'utility' },
-          { step: 3, task: `Validate execution`, recommendedCategory: 'validation' },
-        ],
-      };
+      return { ok: false, error: 'LLM returned unparseable decomposition; no heuristic fallback (removed in M7)' };
     }
   }
 

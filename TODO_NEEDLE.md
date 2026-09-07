@@ -73,18 +73,20 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Run result carries `escalations[]` trail (reason, latency context, provider)
 - [x] `tests/agent/escalation.test.mjs` — 8 tests (budget, threshold, no ping-pong, refusal mapping, disabled flag)
 
-## Milestone 7 — Remove heuristic cognition [x] legacy sequential-think deleted
+## Milestone 7 — Remove heuristic cognition [x] done, 74/74 green (keyed)
 - [x] Deleted `src/managers/sequential-thinking-manager.ts` (caller-supplied thought storage)
 - [x] Deleted `src/integrations/sequential-integration.ts` (canned templates + Math.random "reasoning")
+- [x] Deleted `planTask` hardcoded `analysis → utility → validation` fallback — throws honestly when Needle + OpenRouter both fail
+- [x] Deleted dead `define_step` pseudo-tool path (proven refused by the model)
+- [x] `LLMManager.decomposeTask` returns `{ok:false, error}` instead of fake subtasks
+- [x] Handler drops `legacy_fallback` merge — `llm_decompose_task` returns Needle plan or honest error
 - [x] `sequentialthinking` + `analyze_with_sequential_thinking` are Needle-only paths now (no env gating, no legacy branches)
 - [x] `chaining://sequential/state` rebacked on shared AgentState (URI preserved, content = live sessions)
-- [x] Kept deterministic runtime: validation, registry guards, retries, budgets, saturation, limits
-- [x] Kept `LLMManager` heuristic fallback ONLY as last-resort inside `planTask` (both providers failed) — safety net, not cognition
-- [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~1.5–6s); OpenRouter arm proven live against vault key (`OPENROUTER_OK` via `openrouter/free`)
-- [ ] Still needs: OpenRouter arm with key + repeated runs for variance bounds before deleting anything
+- [x] Kept: deterministic validation/registry/retries/budgets/saturation/limits, optimizer route ranking (labeled fast path), `summarize` truncation
+- [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~2.5–7.5s); OpenRouter arm proven live against vault key
 
-## Benchmarks (`tests/agent/`) [x] suite live, 73/73 green (keyed)
-- [x] `npm run test:agent` — 62 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast, enablement, guidance)
+## Benchmarks (`tests/agent/`) [x] suite live, 74/74 green (keyed, 0 skipped)
+- [x] `npm run test:agent` — 63 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast, enablement, guidance)
 - [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 11 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns, Needle-backed analysis, keyed OpenRouter arm)
 - [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
 

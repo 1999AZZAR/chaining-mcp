@@ -107,7 +107,7 @@ export class RequestHandlers {
       case 'llm_decompose_task': {
         const tools = this.discovery.getTools();
         const summary = tools.map(t => `${t.name} (${t.category || 'utility'}): ${t.description}`).join('\n');
-        // Needle-first planning when the agent runtime is enabled; legacy path otherwise.
+        // Needle-first planning; honest failure when no provider can plan (M7: no fake plans).
         if (isAgentEnabled()) {
           try {
             const { planTask } = await import('../agent/agent.js');
@@ -128,9 +128,7 @@ export class RequestHandlers {
               })),
             };
           } catch (e) {
-            const reason = e instanceof Error ? e.message : String(e);
-            const legacy = await this.llmManager.decomposeTask(args.task, summary);
-            return { ...legacy, source: 'legacy_fallback', needleError: reason };
+            return { ok: false, source: 'needle', error: e instanceof Error ? e.message : String(e) };
           }
         }
         return await this.llmManager.decomposeTask(args.task, summary);

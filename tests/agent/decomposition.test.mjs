@@ -2,10 +2,10 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { planTask } from './.dist/agent/agent.js';
 
-const needlePlan = (steps) => ({
+const nativeCalls = (calls) => ({
   health: async () => ({ ok: true }),
   generate: async () => ({
-    text: JSON.stringify({ type: 'call', function_calls: steps.map(s => ({ name: 'define_step', arguments: s })), confidence: 0.9 }),
+    text: JSON.stringify({ type: 'call', function_calls: calls, confidence: 0.9 }),
     modelUsed: 'mock-needle', latencyMs: 1,
   }),
   confidenceOf: () => 0.9,
@@ -26,39 +26,53 @@ const openrouter = (steps) => ({
   health: async () => ({ ok: true }),
   generate: async () => ({ text: JSON.stringify(steps), modelUsed: 'or', latencyMs: 1 }),
 });
+const failingEscalation = () => ({
+  health: async () => ({ ok: false }),
+  generate: async () => { throw new Error('nope'); },
+});
+const DECLS = [
+  { name: 'alpha', description: 'a' },
+  { name: 'beta', description: 'b' },
+];
 
-describe('planTask', () => {
-  test('needle plan validated into AgentPlan', async () => {
+describe('planTask (M7: no heuristic fallback)', () => {
+  test('needle chain validated into AgentPlan', async () => {
     const plan = await planTask('do things', 'alpha, beta', undefined, {
-      primary: needlePlan([{ step: 1, task: 'first', tool: 'alpha' }, { step: 2, task: 'second', tool: 'beta', dependsOn: [1] }]),
-    });
+      primary: nativeCalls([
+        { name: 'alpha', arguments: { x: 1 } },
+        { name: 'beta', arguments: {} },
+      ]),
+    }, DECLS);
     assert.equal(plan.task, 'do things');
-    assert.equal(plan.steps.length, 2);
-    assert.equal(plan.steps[1].dependsOn[0], 1);
+    assert.deepEqual(plan.steps.map(s => s.tool), ['alpha', 'beta']);
+    assert.deepEqual(plan.steps[1].dependsOn, [1]);
   });
 
   test('needle failure falls to openrouter', async () => {
     const plan = await planTask('do things', 'alpha', undefined, {
       primary: failingNeedle(),
       escalation: openrouter([{ step: 1, task: 'solo', recommendedCategory: 'utility' }]),
-    });
+    }, DECLS);
     assert.equal(plan.steps[0].task, 'solo');
   });
 
-  test('all providers down falls to legacy heuristic', async () => {
-    const plan = await planTask('do things', 'alpha', undefined, {
+  test('all providers down throws honest error (no fake plan)', async () => {
+    await assert.rejects(() => planTask('do things', 'alpha', undefined, {
       primary: failingNeedle(),
-      escalation: { health: async () => ({ ok: false }), generate: async () => { throw new Error('nope'); } },
-    });
-    assert.equal(plan.steps.length, 3);
-    assert.equal(plan.steps[0].recommendedCategory, 'analysis');
+      escalation: failingEscalation(),
+    }, DECLS), /nope/);
   });
 
-  test('needle garbage falls through, not crash', async () => {
-    const plan = await planTask('do things', 'alpha', undefined, {
-      primary: { ...needlePlan([]), generate: async () => ({ text: '}{{{', modelUsed: 'x', latencyMs: 1 }) },
-      escalation: { health: async () => ({ ok: false }), generate: async () => { throw new Error('nope'); } },
-    });
-    assert.equal(plan.steps.length, 3);
+  test('needle garbage with dead escalation throws, not fake plan', async () => {
+    await assert.rejects(() => planTask('do things', 'alpha', undefined, {
+      primary: { ...nativeCalls([]), generate: async () => ({ text: '}{{{', modelUsed: 'x', latencyMs: 1 }) },
+      escalation: failingEscalation(),
+    }, DECLS), /./);
+  });
+
+  test('unknown tools filtered; empty chain throws', async () => {
+    await assert.rejects(() => planTask('do things', 'alpha', undefined, {
+      primary: nativeCalls([{ name: 'ghost', arguments: {} }]),
+    }, DECLS), /no plan steps|disabled|not set/);
   });
 });

@@ -415,7 +415,9 @@ function describeArgs(tool: string, args: unknown): string {
  * respond/refusal/repeat/low confidence (max 6 steps). A `define_step`
  * pseudo-tool does NOT work — the model semantically matches the task
  * against declared tools and refuses meta-tools with an empty call.
- * Falls back to OpenRouter, then to the legacy heuristic (kept until M7).
+ * Falls back to OpenRouter. M7: no heuristic fallback — when both
+ * providers fail the call throws an honest error instead of a fake
+ * analysis → utility → validation plan.
  */
 export async function planTask(
   task: string,
@@ -430,54 +432,18 @@ export async function planTask(
     if (toolDecls && toolDecls.length) {
       return await planIterative(needle, task, toolDecls, signal, 6, guidance);
     }
-    const res = await needle.generate({
-      prompt: `Break this task into ordered steps. Emit one define_step call per step.\n\nTask: ${task}\n\nAvailable capabilities:\n${availableToolsSummary.slice(0, 1500)}`,
-      signal,
-      tools: [{
-        name: 'define_step',
-        description: 'Define one ordered plan step: which real tool to use and what it should do',
-        schema: {
-          type: 'object',
-          properties: {
-            step: { type: 'integer', description: '1-based order' },
-            task: { type: 'string', description: 'what this step does' },
-            tool: { type: 'string', description: 'real tool to use' },
-            dependsOn: { type: 'array', items: { type: 'integer' } },
-          },
-          required: ['step', 'task'],
-        },
-      }],
-    });
-    const native = JSON.parse(res.text);
-    const calls = native.function_calls || [];
-    if (calls.length) {
-      const plan = AgentPlanSchema.parse({
-        task,
-        steps: calls.map((c: { arguments: Record<string, unknown> }) => ({ dependsOn: [], ...c.arguments })),
-      });
-      if (plan.steps.length) return plan;
-    }
+    // No structured decls: skip straight to escalation (the define_step
+    // pseudo-tool is refused by the model — removed in M7).
   } catch { /* fall through to escalation */ }
   finally { (needle as Partial<NeedleProvider>).stopServer?.(); }
 
   const escalation = providers?.escalation ?? new OpenRouterProvider();
-  try {
-    const res = await escalation.generate({
-      prompt: `Decompose into 3-6 ordered steps as JSON array [{"step":1,"task":"...","recommendedCategory":"..."}]. Task: ${task}. Tools: ${availableToolsSummary.slice(0, 1500)}`,
-      systemPrompt: 'You are a task decomposition engine. Output valid JSON only, no fences.',
-      signal,
-    });
-    const cleaned = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    const steps = JSON.parse(cleaned);
-    return AgentPlanSchema.parse({ task, steps: steps.map((s: Record<string, unknown>) => ({ dependsOn: [], ...s })) });
-  } catch { /* legacy heuristic last resort */ }
-
-  return {
-    task,
-    steps: [
-      { step: 1, task: `Analyze requirements for ${task}`, recommendedCategory: 'analysis', dependsOn: [] },
-      { step: 2, task: `Execute main operation for ${task}`, recommendedCategory: 'utility', dependsOn: [1] },
-      { step: 3, task: 'Verify and summarize results', recommendedCategory: 'validation', dependsOn: [2] },
-    ],
-  };
+  const res = await escalation.generate({
+    prompt: `Decompose into 3-6 ordered steps as JSON array [{"step":1,"task":"...","recommendedCategory":"..."}]. Task: ${task}. Tools: ${availableToolsSummary.slice(0, 1500)}`,
+    systemPrompt: 'You are a task decomposition engine. Output valid JSON only, no fences.',
+    signal,
+  });
+  const cleaned = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const steps = JSON.parse(cleaned);
+  return AgentPlanSchema.parse({ task, steps: steps.map((s: Record<string, unknown>) => ({ dependsOn: [], ...s })) });
 }

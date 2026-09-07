@@ -48,7 +48,10 @@ describe('needle live', { skip: !LIVE || !existsSync(ENGINE) ? 'needs NEEDLE_LIV
   });
 
   test('planTask returns validated plan', async () => {
-    const plan = await agent.planTask('check disk usage and list large files', 'filesystem tools, shell execution');
+    const plan = await agent.planTask('check disk usage and list large files', 'filesystem tools, shell execution', undefined, undefined, [
+      { name: 'disk_usage', description: 'Check disk usage' },
+      { name: 'list_files', description: 'List large files' },
+    ]);
     assert.ok(plan.steps.length >= 1);
     assert.ok(plan.steps.every(s => typeof s.step === 'number' && typeof s.task === 'string'));
   });

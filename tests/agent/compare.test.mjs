@@ -23,13 +23,19 @@ const CATALOG = [
 const summary = CATALOG.map(t => `${t.name}: ${t.description}`).join('\n');
 
 describe('heuristic vs needle comparison', { skip: process.env.NEEDLE_LIVE === '1' ? false : 'needs NEEDLE_LIVE=1 and fetched engine' }, () => {
-  test('baseline: heuristic emits categories, never real tools', async () => {
-    const llm = new LLMManager();
-    for (const c of CASES.slice(0, 1)) {
-      const r = await llm.decomposeTask(c.task, summary);
-      assert.ok(r.ok && r.subtasks.length > 0);
-      const tools = r.subtasks.map(s => s.tool).filter(Boolean);
-      assert.deepEqual(tools, [], 'heuristic fallback cannot name tools by construction');
+  test('baseline: heuristic removed — keyless decompose fails honestly', async () => {
+    const saved = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      const llm = new LLMManager();
+      for (const c of CASES.slice(0, 1)) {
+        const r = await llm.decomposeTask(c.task, summary);
+        assert.equal(r.ok, false);
+        assert.ok(r.error);
+        assert.equal(r.subtasks, undefined);
+      }
+    } finally {
+      if (saved !== undefined) process.env.OPENROUTER_API_KEY = saved;
     }
   });
 

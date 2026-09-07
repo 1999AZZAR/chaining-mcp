@@ -136,8 +136,9 @@ describe('planToWorkflow + runAgentWorkflow', () => {
       task: 'do alpha', toolSchemas: [{ name: 'alpha', description: 'a' }],
       orchestrator: o,
       providers: {
+        // M7: planner consumes NATIVE calls only — first entry plans, rest drive the loop.
         primary: needleQueue([
-          native('define_step', { step: 1, task: 'do alpha', tool: 'alpha' }),
+          native('alpha', { q: 0 }),
           native('alpha', { q: 1 }),
           native('alpha', { q: 1 }),
         ]),
@@ -153,10 +154,19 @@ describe('planToWorkflow + runAgentWorkflow', () => {
   test('agent cannot escape registry via orchestrator', async () => {
     const o = new WorkflowOrchestrator();
     o.setTransport(okTransport((tool) => ({ tool })));
+    const native = (name, args) => JSON.stringify({ type: 'call', function_calls: [{ name, arguments: args }], confidence: 0.9 });
+    let i = 0;
+    const queue = [native('alpha', {}), native('ghost', {}), native('alpha', {}), native('alpha', {})];
     const { run } = await runAgentWorkflow({
       task: 't', toolSchemas: [{ name: 'alpha' }],
       orchestrator: o,
-      providers: { primary: scriptProvider([call('ghost'), call('alpha'), done('fin')]) },
+      providers: {
+        primary: {
+          metadata: () => ({ name: 's', kind: 'local', model: 's', capabilities: [] }),
+          health: async () => ({ ok: true }),
+          generate: async () => ({ text: queue[Math.min(i++, queue.length - 1)], modelUsed: 's', latencyMs: 1 }),
+        },
+      },
     });
     assert.equal(run.decision.action, 'complete');
   });
