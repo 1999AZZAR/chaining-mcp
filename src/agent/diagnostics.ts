@@ -16,6 +16,20 @@ export function isAgentEnabled(): boolean {
   return existsSync(bundledEnginePath());
 }
 
+/** Auto-detected escalation backend: any configured provider key while
+ *  escalation is not explicitly disabled. Order of preference reflects what
+ *  the OpenRouterProvider/LLMManager can actually call (OpenAI-compatible). */
+export function detectedEscalationProvider(): string | null {
+  if ((process.env.AGENT_ESCALATION_ENABLED || 'true').toLowerCase() === 'false') return null;
+  if (process.env.OPENROUTER_API_KEY) return 'openrouter';
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  return null;
+}
+
+export function escalationProviderAvailable(): boolean {
+  return detectedEscalationProvider() !== null;
+}
+
 /**
  * Cheap, spawn-free agent diagnostics for chaining://agent/status.
  * Never exposes keys; never starts the engine (health() does that).

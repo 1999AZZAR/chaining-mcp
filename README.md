@@ -33,12 +33,16 @@ Mitosis
 Needle 2 (local)
   │  refusal / low-confidence / malformed output / provider failure
   ▼
-OpenRouter (escalation layer, budgeted one-way trip, recorded trail)
-  │  also fails / unparseable
+OpenRouter (escalation layer, auto-detected, budgeted one-way trip, recorded trail)
+  │  also fails / unparseable / NO provider key configured
   ▼
-the agent itself (last layer) — returns a shaped `escalate` outcome
-  with the full AgentState trail; never a bare exception or a fabricated answer
+the calling agent (last layer) — auto-detected handoff: when no OpenRouter /
+OpenAI key is present, Mitosis skips the dead-end call and returns a structured
+`handoff` outcome (`decision: escalate`, `handoff: true`, reason + AgentState
+trail) so the user's agent takes over directly.
 ```
+
+Escalation provider is **auto-detected** from the environment (`OPENROUTER_API_KEY`, else `OPENAI_API_KEY`; `AGENT_ESCALATION_ENABLED=false` disables). Responses expose `escalation: { configured, provider }` so the calling agent always knows whether a real backend exists.
 
 ### What this gives you (verified)
 
@@ -60,7 +64,7 @@ the agent itself (last layer) — returns a shaped `escalate` outcome
 - **Tuned `.cact` models are not loadable yet.** The current CLI has no `--weights` flag, so `NEEDLE_MODEL_PATH` is reported by health checks and reserved for a future libneedle path. The bundled base model is what runs.
 - **Skills are discoverable, retrievable, and recommended — not executed.** A skill is instructions (SKILL.md); running its scripts is the harness's job. `suggest_skill_chain` attaches deterministic per-step skill hints, labeled as such (the model doesn't fuse them).
 - **`brainstorming` needs a generative model.** Without `OPENROUTER_API_KEY` it fails honestly — we removed template ideas with random scores rather than fake them.
-- **OpenRouter escalation only works with a key.** Without one, escalation paths report a budgeted, recorded failure (that's the "agent last layer" path).
+- **OpenRouter escalation only works with a key — auto-detected.** Without `OPENROUTER_API_KEY`/`OPENAI_API_KEY`, Mitosis detects the absence and hands control to the calling agent (`handoff: true`) instead of attempting a doomed call.
 - **Discovery connectivity fallbacks** add known tools for common server types when a server can't be reached — that's network resilience, not cognition.
 
 ---

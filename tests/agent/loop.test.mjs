@@ -124,4 +124,24 @@ describe('agent loop', () => {
     assert.equal(n, 2);
     assert.equal(run.decision.action, 'complete');
   });
+
+  test('no provider key auto-detected → agent_run hands off, no dead-end call', async () => {
+    const saved = { or: process.env.OPENROUTER_API_KEY, oa: process.env.OPENAI_API_KEY, esc: process.env.AGENT_ESCALATION_ENABLED };
+    delete process.env.OPENROUTER_API_KEY; delete process.env.OPENAI_API_KEY; delete process.env.AGENT_ESCALATION_ENABLED;
+    try {
+      const run = await agentRun({
+        task: 't', toolSchemas: TOOLS, executor: exec(),
+        providers: { primary: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'stuck' })]) },
+        limits: { maxIterations: 5, maxToolCalls: 3, maxExecutionMs: 5000 },
+      });
+      assert.equal(run.handoff, true);
+      assert.equal(run.escalated, true);
+      assert.equal(run.decision.action, 'escalate');
+      assert.match(run.decision.reason, /no escalation provider configured/);
+    } finally {
+      if (saved.or !== undefined) process.env.OPENROUTER_API_KEY = saved.or;
+      if (saved.oa !== undefined) process.env.OPENAI_API_KEY = saved.oa;
+      if (saved.esc !== undefined) process.env.AGENT_ESCALATION_ENABLED = saved.esc;
+    }
+  });
 });

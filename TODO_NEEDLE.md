@@ -71,13 +71,15 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `stopServer()` SIGKILL fallback (no lingering engines)
 - [x] Live-test policy: retry stochastic model assertions (≤3), accept escalation-shaped outcomes keyless
 
-## Milestone 6 — OpenRouter escalation policy [x] live, 44/44 green
+## Milestone 6 — OpenRouter escalation policy [x] live, auto-detected handoff
 - [x] `src/agent/escalation.ts` — `EscalationController`: budgeted one-way trip, triggers (low_confidence, refusal, malformed_output, provider_failure, repeated_tool_failure, unhealthy_primary), trail with timestamps
 - [x] Single choke point `doEscalate()` — every switch recorded to history + state; budget-spent ends the run instead of looping
+- [x] **Auto-detected provider**: `escalationProviderAvailable()`/`detectedEscalationProvider()` (OPENROUTER_API_KEY → OPENAI_API_KEY; AGENT_ESCALATION_ENABLED=false disables). When none is configured, `agentRun` + `agentStep` return a structured `handoff:true` escalate outcome (reason + AgentState trail) — control passes directly to the calling agent; no dead-end HTTP call
+- [x] MCP responses surface `escalation: { configured, provider }`
 - [x] Repeated tool failures escalate mid-run (threshold `AGENT_REPEATED_FAILURE_THRESHOLD`, default 3; success resets)
 - [x] `AGENT_ESCALATION_ENABLED=false` / `AGENT_MAX_ESCALATIONS` honored from env, overridable per-run
 - [x] Run result carries `escalations[]` trail (reason, latency context, provider)
-- [x] `tests/agent/escalation.test.mjs` — 8 tests (budget, threshold, no ping-pong, refusal mapping, disabled flag)
+- [x] Tests: handoff path (loop + step, key-stripped), budget/threshold/ping-pong/refusal-mapping/disabled, keyed e2e GREEN
 
 ## Milestone 7 — Remove heuristic cognition [x] done, 82/82 green (keyed)
 - [x] **External sequential-thinking dependency fully removed** — deleted `@modelcontextprotocol/server-sequential-thinking` from discovery `essentialServers` and its fallback-tool block (`sequential-thinking|sequential` pattern), so discovery never npx-spawns a remote thinking server (e2e proof: discovered 1 server / 2 tools, was 2/3); optimizer's phantom `sequential_thinking` tool reference removed; stale root `test-smoke.js`/`test-live-llm.js` (imported deleted modules) deleted, `npm test` repointed to the agent suite

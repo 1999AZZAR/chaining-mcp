@@ -4,6 +4,7 @@ import { OpenRouterProvider } from './openrouter-provider.js';
 import type { AgentStateManager, TerminationReason } from './state.js';
 import { sharedAgentState } from './state.js';
 import { EscalationController, escalationPolicyFromEnv, type EscalationPolicy, type EscalationRecord, type EscalationTrigger } from './escalation.js';
+import { escalationProviderAvailable } from './diagnostics.js';
 
 export interface AgentLoopLimits { maxIterations: number; maxToolCalls: number; maxExecutionMs: number }
 export interface AgentToolExecutor { executeTool(tool: string, args: unknown, signal?: AbortSignal): Promise<unknown> }
@@ -27,6 +28,12 @@ const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, ma
 
 /** Internal control-flow marker: primary chose `escalate`, hand turn to escalation. */
 class EscalateSignal extends Error {
+  constructor(public reason: string) { super(reason); }
+}
+
+/** Internal control-flow marker: escalation needed but NO provider key is
+ *  configured — hand control back to the calling agent (auto-detected). */
+class HandoffSignal extends Error {
   constructor(public reason: string) { super(reason); }
 }
 
@@ -92,7 +99,7 @@ function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], his
  * Milestone 2: Needle-first agent loop with OpenRouter escalation.
  * Parses + validates every decision via AgentDecisionSchema; rejects unknown tools.
  */
-export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean; sessionId?: string; escalations: EscalationRecord[] }> {
+export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean; sessionId?: string; escalations: EscalationRecord[]; handoff?: boolean }> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const t0 = Date.now();
   const needle = input.providers?.primary instanceof NeedleProvider
@@ -109,6 +116,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
 
   const isPrimary = (p: ModelProvider): boolean => p === primary;
   const esc = new EscalationController(input.escalationPolicy ?? escalationPolicyFromEnv());
+  const defaultEscalation = !input.providers?.escalation;
+  const escalationUsable = !defaultEscalation || escalationProviderAvailable();
   let provider: ModelProvider = primary;
   const stated = input.state;
   const session = stated ? stated.manager.create(input.task, stated.sessionId, stated.workflowId) : undefined;
@@ -118,18 +127,34 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const end = (reason: TerminationReason, detail?: string): void => {
     if (stated && session) try { stated.manager.terminate(session.id, reason, detail); } catch { /* best effort */ }
   };
-  /** Single choke point for every provider switch: budgeted, recorded, one-way. */
+  const handoff = (reason: string, iterations: number): { decision: AgentDecision; toolCalls: number; iterations: number; escalated: boolean; sessionId?: string; escalations: EscalationRecord[]; handoff: boolean } => {
+    end('escalated', reason);
+    rec({ kind: 'escalation', reason, provider: 'agent-handoff' });
+    return { decision: { action: 'escalate' as const, reason }, toolCalls, iterations, escalated: true, sessionId: session?.id, escalations: esc.trail, handoff: true };
+  };
+  /** Single choke point for every provider switch: budgeted, recorded, one-way.
+   *  Auto-detects the escalation provider: when none is configured, hands
+   *  control back to the calling agent instead of attempting a dead-end call. */
   const doEscalate = (trigger: EscalationTrigger, detail?: string): void => {
+    if (!escalationUsable) {
+      throw new HandoffSignal(`no escalation provider configured (auto-detected none); handing control to the calling agent (${trigger}${detail ? ': ' + detail : ''})`);
+    }
     const record = esc.escalate(trigger, detail); // throws when budget spent
     provider = escalation;
     history.push({ escalated: trigger, detail, at: record.at });
     rec({ kind: 'escalation', reason: `${trigger}${detail ? ': ' + detail : ''}`, provider: 'escalation' });
+  };
+  const intercept = (e: unknown, iterations: number): ReturnType<typeof handoff> | null => {
+    if (e instanceof HandoffSignal) return handoff(e.reason, iterations);
+    return null;
   };
   const primaryHealth: { ok: boolean; detail?: string } = await primary.health().catch(() => ({ ok: false, detail: 'health check threw' }));
   if (!primaryHealth.ok) {
     try {
       doEscalate('unhealthy_primary', primaryHealth.detail);
     } catch (e) {
+      const h = intercept(e, 0);
+      if (h) return h;
       end('provider_failure', e instanceof Error ? e.message : String(e));
       throw e;
     }
@@ -166,6 +191,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
         try {
           doEscalate('provider_failure', msg);
         } catch (e) {
+          const h = intercept(e, i);
+          if (h) return h;
           end('provider_failure', e instanceof Error ? e.message : String(e));
           throw e;
         }
@@ -189,6 +216,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
         try {
           doEscalate('malformed_output', res.text.slice(0, 200));
         } catch (e) {
+          const h = intercept(e, i);
+          if (h) return h;
           end('provider_failure', e instanceof Error ? e.message : String(e));
           throw e;
         }
@@ -207,6 +236,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       try {
         doEscalate(trigger, decision.reason);
       } catch (e) {
+        const h = intercept(e, i);
+        if (h) return h;
         end('escalated', e instanceof Error ? e.message : String(e));
         throw e;
       }
@@ -242,6 +273,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
           try {
             doEscalate('repeated_tool_failure', `${decision.tool}: ${errMsg}`.slice(0, 200));
           } catch (budget) {
+            const h = intercept(budget, i);
+            if (h) return h;
             end('provider_failure', budget instanceof Error ? budget.message : String(budget));
             throw budget;
           }
@@ -289,6 +322,7 @@ export async function agentStep(input: AgentStepInput): Promise<{
   result?: unknown;
   error?: string;
   escalated: boolean;
+  handoff?: boolean;
   stats: ReturnType<AgentStateManager['stats']>;
   tail: string[];
 }> {
@@ -314,9 +348,17 @@ export async function agentStep(input: AgentStepInput): Promise<{
 
   let provider: ModelProvider = primary;
   let escalated = false;
+  let handoff = false;
   let rawText: string;
   let error: string | undefined;
+  const defaultEscalation = !input.providers?.escalation;
+  const escalationUsable = !defaultEscalation || escalationProviderAvailable();
   const decisionSystem = 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose: {"action":"call_tool","tool":"...","args":{}} or {"action":"complete","result":...} or {"action":"escalate","reason":"..."} or {"action":"revise","note":"..."}.';
+  const handoffOutcome = (reason: string) => {
+    rec({ kind: 'escalation', reason, provider: 'agent-handoff' });
+    try { manager.terminate(session.id, 'escalated', reason); } catch { /* best effort */ }
+    return { sessionId: session.id, decision: { action: 'escalate' as const, reason }, error: reason, escalated: true, handoff: true, stats: manager.stats(session.id), tail: manager.tail(session.id, 6) };
+  };
   try {
     const res = await provider.generate({
       prompt, signal: input.signal, timeoutMs: 15000, systemPrompt: decisionSystem,
@@ -325,7 +367,8 @@ export async function agentStep(input: AgentStepInput): Promise<{
     rawText = translateNativeDecision(res.text, needleApi);
     // Needle succeeded but refused / low-confidence / malformed: the escalate
     // decision means hand the SAME turn to the escalation provider, not just
-    // record it. The agent itself is the last layer when that also fails.
+    // record it. Auto-detected: with no provider key configured we hand
+    // control straight back to the calling agent (no dead-end call).
     if (provider === primary) {
       try {
         const d = parseDecision(rawText);
@@ -334,6 +377,11 @@ export async function agentStep(input: AgentStepInput): Promise<{
         if (e instanceof EscalateSignal) {
           escalated = true;
           rec({ kind: 'escalation', reason: e.reason || 'needle escalated', provider: 'escalation' });
+          if (!escalationUsable) {
+            // Auto-detected: no provider key → hand control to the calling agent.
+            handoff = true;
+            return handoffOutcome(`no escalation provider configured (auto-detected none); handing control to the calling agent (needle escalated${e.reason ? ': ' + e.reason : ''})`);
+          }
           provider = escalation;
           const res2 = await provider.generate({ prompt, signal: input.signal, timeoutMs: 20000, systemPrompt: decisionSystem });
           rawText = res2.text;
@@ -350,9 +398,14 @@ export async function agentStep(input: AgentStepInput): Promise<{
       error = `escalation failed after Needle (${trail}): ${e instanceof Error ? e.message : String(e)}`;
       rec({ kind: 'escalation', reason: error, provider: 'escalation' });
       try { manager.terminate(session.id, 'escalated'); } catch { /* best effort */ }
-      return { sessionId: session.id, decision: { action: 'escalate', reason: error }, error, escalated: true, stats: manager.stats(session.id), tail: manager.tail(session.id, 6) };
+      return { sessionId: session.id, decision: { action: 'escalate' as const, reason: error }, error, escalated: true, handoff: false, stats: manager.stats(session.id), tail: manager.tail(session.id, 6) };
     }
-    // Single budgeted escalation hop, then surface the outcome.
+    // Single budgeted escalation hop, then surface the outcome. Auto-detected:
+    // with no provider key we hand control back instead of a dead-end call.
+    if (!escalationUsable) {
+      handoff = true;
+      return handoffOutcome(`no escalation provider configured (auto-detected none); handing control to the calling agent (primary failed: ${e instanceof Error ? e.message : String(e)})`);
+    }
     provider = escalation;
     escalated = true;
     rec({ kind: 'escalation', reason: 'primary provider failed', provider: 'escalation' });
@@ -374,7 +427,7 @@ export async function agentStep(input: AgentStepInput): Promise<{
     if (escalated) {
       error = 'escalation provider returned an unparseable decision after Needle';
       rec({ kind: 'escalation', reason: error });
-      decision = { action: 'escalate', reason: error };
+      decision = { action: 'escalate' as const, reason: error };
       try { manager.terminate(session.id, 'escalated'); } catch { /* best effort */ }
     } else {
       throw new Error('agent step: model returned malformed decision');

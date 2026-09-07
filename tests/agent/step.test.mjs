@@ -136,4 +136,26 @@ describe('agentStep', () => {
     assert.match(s.error, /escalation failed after Needle/);
     assert.ok(m.stats('last-layer').escalations >= 2);
   });
+
+  test('no provider key auto-detected → handoff to calling agent', async () => {
+    const saved = { or: process.env.OPENROUTER_API_KEY, oa: process.env.OPENAI_API_KEY, esc: process.env.AGENT_ESCALATION_ENABLED };
+    delete process.env.OPENROUTER_API_KEY; delete process.env.OPENAI_API_KEY; delete process.env.AGENT_ESCALATION_ENABLED;
+    try {
+      const m = new AgentStateManager();
+      const s = await agentStep({
+        task: 't', tools: TOOLS,
+        providers: { primary: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'needle unsure' })]) },
+        state: m,
+      });
+      assert.equal(s.handoff, true);
+      assert.equal(s.escalated, true);
+      assert.equal(s.decision.action, 'escalate');
+      assert.match(s.error, /no escalation provider configured/);
+      assert.ok(m.stats(s.sessionId).escalations >= 1);
+    } finally {
+      if (saved.or !== undefined) process.env.OPENROUTER_API_KEY = saved.or;
+      if (saved.oa !== undefined) process.env.OPENAI_API_KEY = saved.oa;
+      if (saved.esc !== undefined) process.env.AGENT_ESCALATION_ENABLED = saved.esc;
+    }
+  });
 });

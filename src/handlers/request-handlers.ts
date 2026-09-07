@@ -7,7 +7,7 @@ import { AwesomeCopilotIntegration } from '../integrations/awesome-copilot-integ
 import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
 import { runAgentWorkflow } from '../agent/workflow.js';
-import { isAgentEnabled } from '../agent/diagnostics.js';
+import { isAgentEnabled, escalationProviderAvailable, detectedEscalationProvider } from '../agent/diagnostics.js';
 import { buildGuidance, buildSkillGuidance } from '../agent/guidance.js';
 import { sharedSkills } from '../skills/skill-discovery.js';
 
@@ -363,6 +363,11 @@ export class RequestHandlers {
             result: step.result,
             error: step.error,
             escalated: step.escalated,
+            handoff: step.handoff,
+            escalation: {
+              configured: escalationProviderAvailable(),
+              provider: detectedEscalationProvider(),
+            },
             state: step.stats,
             recentState: step.tail,
           };
@@ -939,6 +944,11 @@ export class RequestHandlers {
           toolCalls: run.toolCalls,
           iterations: run.iterations,
           escalated: run.escalated,
+          handoff: run.handoff,
+          escalation: {
+            configured: escalationProviderAvailable(),
+            provider: detectedEscalationProvider(),
+          },
           escalations: run.escalations,
           stateStats: sessionId ? state.stats(sessionId) : undefined,
         };
