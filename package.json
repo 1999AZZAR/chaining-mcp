@@ -8,6 +8,8 @@
   "type": "module",
   "scripts": {
     "build": "npm run clean && tsc",
+    "prebuild": "node scripts/ensure-needle.mjs",
+    "prepare": "node scripts/ensure-needle.mjs",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",

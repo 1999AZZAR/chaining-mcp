@@ -8,6 +8,8 @@ A Model Context Protocol (MCP) server that orchestrates other MCP servers: disco
 
 ## Agent Runtime (Needle 2, bundled) — how it actually works
 
+![Blotcat sitting cross-legged, branching thought bubbles emerging from its head](assets/chaining-illustrations/03-sequential.jpg)
+
 ```
 User
  ↓
@@ -65,6 +67,8 @@ the agent itself (last layer) — returns a shaped `escalate` outcome
 
 ## Prebuilt Prompts & Resource Sets
 
+![Blotcat exploring a dark cave with a lantern, finding glowing server nodes](assets/chaining-illustrations/01-discovery.jpg)
+
 **40 prompts + 12 resource sets**, all with bodies of 487–2,284 chars, zero stubs, covering development, debugging, orchestration, MCP-ecosystem workflows, monitoring, analytics, security, and compliance.
 
 They're reachable four ways:
@@ -89,10 +93,12 @@ development-starter-kit, debugging-toolbox, performance-optimization-kit, tool-c
 ## Installation
 
 ```bash
-npm install
-npm run needle:fetch   # downloads the bundled Needle 2 engine + weights (once)
-npm run build
+npm install            # automatically fetches the bundled Needle 2 engine if missing
+npm run build          # prebuild also ensures the engine; tsc compiles
+npm run needle:fetch   # manual re-fetch / platform override (only needed if auto-fetch failed)
 ```
+
+**Existing users:** `git pull` then `npm install` (or `npm run build`) — the engine is fetched automatically; no manual step. The fetch is non-fatal if offline (warns, install/build still complete; retry later with `npm run needle:fetch`).
 
 ### Configuration (minimal opencode example)
 
@@ -122,14 +128,14 @@ npm run build
 
 ---
 
-## Tools (25 active; 29 with `CHAINING_LLM_ENABLED=true`)
+## Tools (29, all enabled by default)
 
 Core: `list_mcp_servers`, `analyze_tools`, `generate_route_suggestions` (Needle-planned), `analyze_with_sequential_thinking` (Needle plan IS the analysis), `get_tool_chain_analysis`, `sequentialthinking` (Needle-backed step over AgentState).
 Awesome Copilot: `search_instructions`, `load_instruction`.
 Agent runtime: `agent_run`, `workflow_status`, `workflow_cancel`.
 Thinking/generative: `brainstorming` (OpenRouter-backed, key required), `workflow_orchestrator`.
 Time: `get_current_time`, `convert_time`. Prompt/resource: `get_prompt`, `search_prompts`, `get_resource_set`, `search_resource_sets`. Validation: `validate_tool_chain`, `analyze_tool_chain_performance`. Skills: `list_skills`, `search_skills`, `get_skill`, `suggest_skill_chain`.
-LLM (gated on `CHAINING_LLM_ENABLED=true`): `llm_query`, `llm_decompose_task` (Needle-planned), `llm_suggest_route` (Needle-planned), `llm_summarize`.
+LLM: `llm_query`, `llm_decompose_task` (Needle-planned), `llm_suggest_route` (Needle-planned), `llm_summarize` — listed by default (`CHAINING_LLM_ENABLED` defaults true); the keyless `llm_*` tools fail honestly or fall back to truncation, never fake answers. Set `CHAINING_LLM_ENABLED=false` to hide them.
 
 ## Resources (18)
 
@@ -153,7 +159,7 @@ LLM (gated on `CHAINING_LLM_ENABLED=true`): `llm_query`, `llm_decompose_task` (N
 | `AGENT_MAX_ESCALATIONS` | `1` | One-way escalation budget per run |
 | `AGENT_REPEATED_FAILURE_THRESHOLD` | `3` | Consecutive tool errors that force escalation |
 | `OPENROUTER_API_KEY` | *optional* | Escalation + brainstorming key |
-| `CHAINING_LLM_*` | … | OpenRouter endpoint/model/max-tokens for the `llm_*` tools |
+| `CHAINING_LLM_*` | … | OpenRouter endpoint/model/max-tokens for the `llm_*` tools (`CHAINING_LLM_ENABLED` defaults `true`; set `false` to hide them) |
 | `GITHUB_TOKEN` | *optional* | Live Awesome Copilot syncing |
 | `MCP_DISCOVERY_CONFIG_PATHS` / `MCP_SERVERS` | *auto* | Discovery config |
 | `MEMORY_FILE_PATH` | `./data/memory.json` | Persistent cache file |
@@ -206,7 +212,12 @@ src/
 
 ## Integration with Other MCP Servers
 
-Discovery scans your MCP config files, connects to real servers, and executes their tools through the workflow transport. **Sequential thinking needs no external server** — the bundled Needle agent provides it. `awesome-copilot` is an optional dotnet-based server (local catalog used when the binary is absent). Project-Guardian complements this server: Mitosis orchestrates, Project-Guardian owns the database. No heuristic "reasoning" layer exists: every plan, route, decomposition, and thought is model-grounded (Needle → OpenRouter) or a deterministic runtime rule.
+Discovery scans your MCP config files, connects to real servers, and executes their tools through the workflow transport.
+
+![Blotcat drawing a red continuous route map on a wall to connect scattered tools](assets/chaining-illustrations/02-route.jpg)
+![Blotcat acting as a factory manager, operating conveyor belts for data handoffs](assets/chaining-illustrations/04-workflow.jpg)
+
+**Sequential thinking needs no external server** — the bundled Needle agent provides it. `awesome-copilot` is an optional dotnet-based server (local catalog used when the binary is absent). Project-Guardian complements this server: Mitosis orchestrates, Project-Guardian owns the database. No heuristic "reasoning" layer exists: every plan, route, decomposition, and thought is model-grounded (Needle → OpenRouter) or a deterministic runtime rule.
 
 ## License
 

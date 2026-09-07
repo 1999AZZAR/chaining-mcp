@@ -10,7 +10,7 @@ import { agentTools, workflowLifecycleTools } from './agent-tools.js';
 import { skillTools } from './skill-tools.js';
 import { isAgentEnabled } from '../agent/diagnostics.js';
 
-const isLlmEnabled = (process.env.CHAINING_LLM_ENABLED || '').toLowerCase() === 'true';
+const isLlmEnabled = (process.env.CHAINING_LLM_ENABLED || 'true').toLowerCase() !== 'false';
 const agentOn = isAgentEnabled();
 
 export const allTools: Tool[] = [
