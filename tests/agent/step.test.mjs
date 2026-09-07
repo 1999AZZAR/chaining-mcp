@@ -87,14 +87,53 @@ describe('agentStep', () => {
     assert.equal(snap.terminated.reason, 'completed');
   });
 
-  test('escalate decision marks escalated', async () => {
+  test('both layers escalate → recorded, returned as escalated', async () => {
     const m = new AgentStateManager();
     const s = await agentStep({
       task: 't', tools: TOOLS,
-      providers: { primary: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'stuck' })]) },
+      providers: {
+        primary: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'stuck' })]),
+        escalation: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'still stuck' })]),
+      },
       state: m,
     });
     assert.equal(s.escalated, true);
     assert.equal(s.decision.action, 'escalate');
+    const snap = m.snapshot(s.sessionId);
+    assert.ok(snap.events.filter(e => e.kind === 'escalation').length >= 2);
+  });
+
+  test('needle escalate hands the turn to OpenRouter (escalation decides)', async () => {
+    const m = new AgentStateManager();
+    const s = await agentStep({
+      task: 't', tools: TOOLS,
+      providers: {
+        primary: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'needle unsure' })]),
+        escalation: scriptProvider([call('alpha', { q: 9 })]),
+      },
+      state: m,
+    });
+    assert.equal(s.escalated, true);
+    assert.equal(s.decision.action, 'call_tool');
+    assert.equal(s.decision.tool, 'alpha');
+    const snap = m.snapshot(s.sessionId);
+    assert.ok(snap.events.some(e => e.kind === 'escalation'));
+  });
+
+  test('escalation failing too leaves the agent trail as the last layer', async () => {
+    const m = new AgentStateManager();
+    const s = await agentStep({
+      task: 't', tools: TOOLS,
+      providers: {
+        primary: scriptProvider([JSON.stringify({ action: 'escalate', reason: 'needle unsure' })]),
+        escalation: { ...scriptProvider([]), generate: async () => { throw new Error('escalation down'); } },
+      },
+      state: m, sessionId: 'last-layer',
+    });
+    // No throw: a shaped escalate outcome with the trail is the last layer.
+    assert.equal(s.escalated, true);
+    assert.equal(s.decision.action, 'escalate');
+    assert.match(s.error, /escalation failed after Needle/);
+    assert.ok(m.stats('last-layer').escalations >= 2);
   });
 });

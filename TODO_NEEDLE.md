@@ -22,6 +22,7 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Strict `AgentDecision` zod schema + validation
 - [x] `agentRun()` loop — live: call→execute→escalate path confirmed
 - [x] Native→decision translation (refusal→escalate, respond→complete, low-conf→escalate)
+- [x] `agentStep` (sequentialthinking MCP layer) escalation semantics: Needle → on refusal/low-confidence/provider-failure the SAME turn is handed to OpenRouter (JSON-only system prompt); when BOTH fail the step returns a shaped `escalate` outcome with the full state trail — the agent itself is the last layer, never a bare exception or fabricated answer
 - [x] Escalation failure carries Needle observation count
 - [ ] `tests/agent/` limits + malformed-output tests
 

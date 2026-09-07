@@ -25,6 +25,11 @@ export interface AgentRunInput {
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
 
+/** Internal control-flow marker: primary chose `escalate`, hand turn to escalation. */
+class EscalateSignal extends Error {
+  constructor(public reason: string) { super(reason); }
+}
+
 function compact(value: unknown, max = 160): string {
   const s = typeof value === 'string' ? value : JSON.stringify(value);
   return s.length > max ? s.slice(0, max) + '…' : s;
@@ -310,18 +315,48 @@ export async function agentStep(input: AgentStepInput): Promise<{
   let provider: ModelProvider = primary;
   let escalated = false;
   let rawText: string;
+  let error: string | undefined;
+  const decisionSystem = 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose: {"action":"call_tool","tool":"...","args":{}} or {"action":"complete","result":...} or {"action":"escalate","reason":"..."} or {"action":"revise","note":"..."}.';
   try {
     const res = await provider.generate({
-      prompt, signal: input.signal, timeoutMs: 15000,
+      prompt, signal: input.signal, timeoutMs: 15000, systemPrompt: decisionSystem,
       tools: input.tools.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
     });
     rawText = translateNativeDecision(res.text, needleApi);
+    // Needle succeeded but refused / low-confidence / malformed: the escalate
+    // decision means hand the SAME turn to the escalation provider, not just
+    // record it. The agent itself is the last layer when that also fails.
+    if (provider === primary) {
+      try {
+        const d = parseDecision(rawText);
+        if (d.action === 'escalate') throw new EscalateSignal(d.reason);
+      } catch (e) {
+        if (e instanceof EscalateSignal) {
+          escalated = true;
+          rec({ kind: 'escalation', reason: e.reason || 'needle escalated', provider: 'escalation' });
+          provider = escalation;
+          const res2 = await provider.generate({ prompt, signal: input.signal, timeoutMs: 20000, systemPrompt: decisionSystem });
+          rawText = res2.text;
+        } else {
+          throw e;
+        }
+      }
+    }
   } catch (e) {
+    if (provider === escalation) {
+      // Both layers exhausted: the agent itself is the last layer — return a
+      // shaped escalate outcome carrying the failure and the state trail.
+      const trail = manager.tail(session.id, 6).join(' | ') || 'no observations';
+      error = `escalation failed after Needle (${trail}): ${e instanceof Error ? e.message : String(e)}`;
+      rec({ kind: 'escalation', reason: error, provider: 'escalation' });
+      try { manager.terminate(session.id, 'escalated'); } catch { /* best effort */ }
+      return { sessionId: session.id, decision: { action: 'escalate', reason: error }, error, escalated: true, stats: manager.stats(session.id), tail: manager.tail(session.id, 6) };
+    }
     // Single budgeted escalation hop, then surface the outcome.
     provider = escalation;
     escalated = true;
     rec({ kind: 'escalation', reason: 'primary provider failed', provider: 'escalation' });
-    const res = await provider.generate({ prompt, signal: input.signal, timeoutMs: 15000 });
+    const res = await provider.generate({ prompt, signal: input.signal, timeoutMs: 20000, systemPrompt: decisionSystem });
     rawText = res.text;
   } finally {
     (primary as Partial<NeedleProvider>).stopServer?.();
@@ -331,13 +366,23 @@ export async function agentStep(input: AgentStepInput): Promise<{
   try {
     decision = parseDecision(rawText);
   } catch {
+    // The agent itself is the last layer: even when BOTH Needle and the
+    // escalation provider produce no parseable decision, return a shaped
+    // escalate outcome with the state trail — never a bare exception or a
+    // fabricated answer.
     rec({ kind: 'malformed_output', excerpt: rawText.slice(0, 200) });
-    throw new Error('agent step: model returned malformed decision');
+    if (escalated) {
+      error = 'escalation provider returned an unparseable decision after Needle';
+      rec({ kind: 'escalation', reason: error });
+      decision = { action: 'escalate', reason: error };
+      try { manager.terminate(session.id, 'escalated'); } catch { /* best effort */ }
+    } else {
+      throw new Error('agent step: model returned malformed decision');
+    }
   }
   rec({ kind: 'decision', decision });
 
   let result: unknown;
-  let error: string | undefined;
   if (decision.action === 'call_tool') {
     if (!knownTools.has(decision.tool)) {
       error = `tool '${decision.tool}' is not in the agent tool registry`;
