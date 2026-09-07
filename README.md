@@ -138,12 +138,12 @@ Mitosis
 - **Enhanced Time Management**: Better timezone handling with proper DST detection
 - **Agent-Backed Sequential Thinking**: Every thought is a Needle observe → decide → execute step over shared state
 - **Awesome Copilot Integration**: Direct access to curated development collections and instructions
-- **42 Prompts & 12 Resource Sets**: Comprehensive collection covering development, orchestration, MCP ecosystem workflows, monitoring, analytics, security, and compliance guidance
+- **40 Prompts & 12 Resource Sets**: Comprehensive collection covering development, orchestration, MCP ecosystem workflows, monitoring, analytics, security, and compliance guidance
 - **Intelligent Tool Guidance**: Structured guidance to help models effectively use available toolsets
 
 ## Prebuilt Prompts & Resource Sets
 
-The chaining MCP server now includes a comprehensive collection of **42 prebuilt prompts and 11 resource sets** designed to help models effectively use the available toolsets for development, debugging, orchestration, monitoring, analytics, security, and compliance workflows. The collection now includes extensive **tool-chaining resources** with ready-made chains for common development scenarios, plus enterprise-grade monitoring and security resources.
+The chaining MCP server now includes a comprehensive collection of **40 prebuilt prompts and 12 resource sets** designed to help models effectively use the available toolsets for development, debugging, orchestration, monitoring, analytics, security, and compliance workflows.
 
 The prompts are organized into specialized categories including MCP ecosystem exploration, cross-server orchestration, time-sensitive operations, intelligent routing, collaborative development, and **advanced tool chaining**.
 
@@ -1087,7 +1087,7 @@ src/
 ├── prompts/
 │   ├── prompt-definitions.ts          # Prompt and resource set data definitions
 │   ├── prompt-handlers.ts             # Dynamic prompt generation and validation logic
-│   └── prompt-registry.ts             # Registry for managing 42 prompts & 12 resource sets
+│   └── prompt-registry.ts             # Registry for managing 40 prompts & 12 resource sets
 ├── handlers/
 │   └── request-handlers.ts            # Central tool execution dispatcher with timeout guards
 ├── tools/
@@ -1115,7 +1115,7 @@ npm run needle:fetch
 # Build TypeScript to JavaScript
 npm run build
 
-# Run comprehensive end-to-end smoke test suite (22 tools, 17 resources)
+# Run comprehensive end-to-end smoke test suite (25 tools, 18 resources)
 npm test
 
 # Run live OpenRouter integration test (requires OPENROUTER_API_KEY)
