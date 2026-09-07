@@ -1,8 +1,23 @@
 /**
- * Milestone 5: agentic workflow loop.
- * Needle plans and decides; WorkflowOrchestrator executes; observations flow
- * back into the agent. The agent never touches the transport directly — every
- * tool call passes through orchestrator.executeTool (registry + transport).
+ * Milestone 5: agentic workflow loop — the Mitosis runtime structure:
+ *
+ *   User
+ *    ↓
+ *   Mitosis
+ *    ├─ Needle 2 (bundled engine, auto-enabled when present)
+ *    │    ↓ structured decision
+ *    ├─ state / observation (AgentState: observations, decisions,
+ *    │    tool calls, results, revisions, branches)
+ *    │    ↓
+ *    ├─ workflow executor (WorkflowOrchestrator: registry-guarded,
+ *    │    transported, retried, cancellable)
+ *    │    ↓
+ *    └─ MCP capabilities
+ *         ↓ result
+ *      Needle 2 → next decision (…until complete / escalate / limits)
+ *
+ * The agent never touches the transport directly — every tool call passes
+ * through orchestrator.executeTool (registry + transport).
  */
 import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import type { WorkflowOrchestratorInput } from '../types.js';

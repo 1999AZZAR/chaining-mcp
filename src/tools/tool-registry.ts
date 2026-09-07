@@ -7,9 +7,10 @@ import { promptResourceTools } from './prompt-resource-tools.js';
 import { validationAnalysisTools } from './validation-analysis-tools.js';
 import { llmTools } from './llm-tools.js';
 import { agentTools, workflowLifecycleTools } from './agent-tools.js';
+import { isAgentEnabled } from '../agent/diagnostics.js';
 
 const isLlmEnabled = (process.env.CHAINING_LLM_ENABLED || '').toLowerCase() === 'true';
-const isAgentEnabled = (process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true';
+const agentOn = isAgentEnabled();
 
 export const allTools: Tool[] = [
   ...coreChainingTools,
@@ -20,7 +21,7 @@ export const allTools: Tool[] = [
   ...validationAnalysisTools,
   ...workflowLifecycleTools,
   ...(isLlmEnabled ? llmTools : []),
-  ...(isAgentEnabled ? agentTools : []),
+  ...(agentOn ? agentTools : []),
 ];
 
 export {

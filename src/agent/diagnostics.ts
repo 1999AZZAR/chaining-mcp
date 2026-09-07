@@ -1,6 +1,22 @@
 import { existsSync } from 'node:fs';
 
 /**
+ * Agent enablement: the Needle engine is bundled (assets/needle), so the
+ * runtime is ON whenever the engine is present unless explicitly disabled
+ * with MITOSIS_AGENT_ENABLED=false. No model env vars required.
+ */
+export function bundledEnginePath(): string {
+  const exe = process.platform === 'win32' ? 'needle.exe' : 'needle';
+  return process.env.NEEDLE_ENGINE_PATH || `assets/needle/${exe}`;
+}
+
+export function isAgentEnabled(): boolean {
+  if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'false') return false;
+  if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true') return true;
+  return existsSync(bundledEnginePath());
+}
+
+/**
  * Cheap, spawn-free agent diagnostics for chaining://agent/status.
  * Never exposes keys; never starts the engine (health() does that).
  */
@@ -15,10 +31,10 @@ export function agentStatus(): {
   escalation: { enabled: boolean; provider: string; maxEscalations: number; repeatedFailureThreshold: number; hasKey: boolean };
 } {
   const exe = process.platform === 'win32' ? 'needle.exe' : 'needle';
-  const enginePath = process.env.NEEDLE_ENGINE_PATH || `assets/needle/${exe}`;
+  const enginePath = bundledEnginePath();
   const modelPath = process.env.NEEDLE_MODEL_PATH || 'assets/needle/needle2.cact';
   return {
-    enabled: (process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true',
+    enabled: isAgentEnabled(),
     provider: process.env.MITOSIS_AGENT_PROVIDER || 'needle',
     engine: { path: enginePath, present: existsSync(enginePath) },
     model: { path: modelPath, present: existsSync(modelPath) },

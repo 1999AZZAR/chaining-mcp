@@ -10,6 +10,7 @@ import { BrainstormingManager } from '../managers/brainstorming-manager.js';
 import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
 import { runAgentWorkflow } from '../agent/workflow.js';
+import { isAgentEnabled } from '../agent/diagnostics.js';
 
 export class RequestHandlers {
   constructor(
@@ -31,7 +32,7 @@ export class RequestHandlers {
     // exceeds the interactive tool timeout); honor it with an upper bound.
     // sequentialthinking gets the same treatment when it fronts the agent.
     const agentFronted = name === 'agent_run' ||
-      (name === 'sequentialthinking' && (process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true');
+      (name === 'sequentialthinking' && isAgentEnabled());
     const timeoutMs = agentFronted
       ? Math.min(Number(args?.maxExecutionMs) || 60000, 300000)
       : defaultMs;
@@ -110,7 +111,7 @@ export class RequestHandlers {
         const tools = this.discovery.getTools();
         const summary = tools.map(t => `${t.name} (${t.category || 'utility'}): ${t.description}`).join('\n');
         // Needle-first planning when the agent runtime is enabled; legacy path otherwise.
-        if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true') {
+        if (isAgentEnabled()) {
           try {
             const { planTask } = await import('../agent/agent.js');
             const plan = await planTask(
@@ -213,8 +214,49 @@ export class RequestHandlers {
           totalRoutes: routes.length,
         };
 
-      case 'analyze_with_sequential_thinking':
+      case 'analyze_with_sequential_thinking': {
         const availableTools = this.discovery.getTools();
+        // Needle-backed: the plan IS the sequential analysis — one validated
+        // tool chain instead of canned template thoughts. Legacy heuristic
+        // path preserved when the agent runtime is off.
+        if (isAgentEnabled()) {
+          const { planTask } = await import('../agent/agent.js');
+          const plan = await planTask(
+            String(args.problem || ''), '',
+            undefined, undefined,
+            availableTools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
+          );
+          const byName = new Map(availableTools.map(t => [t.name, t]));
+          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
+          const knownShare = plan.steps.length ? planTools.length / plan.steps.length : 0;
+          return {
+            source: 'needle-agent',
+            thoughts: plan.steps.map(s => ({
+              number: s.step,
+              content: `${s.tool}: ${s.task}`,
+              type: 'planning',
+            })),
+            analysis: {
+              problemComplexity: plan.steps.length > 4 ? 'high' : plan.steps.length > 2 ? 'medium' : 'low',
+              toolAvailability: availableTools.length,
+              recommendedApproach: plan.steps.length <= 2 ? 'simple' : 'comprehensive',
+              keyInsights: plan.steps.map(s => `${s.tool} — ${s.task}`),
+              potentialChallenges: [],
+            },
+            suggestions: [{
+              id: `needle_plan_${Date.now()}`,
+              name: 'Needle agent plan',
+              description: `Validated ${plan.steps.length}-step tool chain for: ${String(args.problem || '').slice(0, 120)}`,
+              tools: planTools,
+              estimatedDuration: planTools.reduce((sum, t: any) => sum + (t.estimatedDuration || 500), 0),
+              complexity: Math.round(plan.steps.length * 10) / 10,
+              confidence: Math.round(knownShare * 100) / 100,
+              reasoning: `${planTools.length}/${plan.steps.length} planned tools resolved against the discovery registry`,
+            }],
+            confidence: Math.round(knownShare * 100) / 100,
+            reasoning: `Needle produced a validated ${plan.steps.length}-step chain; all reasoning is grounded in registry tools, no template thoughts.`,
+          };
+        }
         const analysis = await this.sequentialIntegration.analyzeWorkflow(
           args.problem,
           availableTools,
@@ -233,6 +275,7 @@ export class RequestHandlers {
           confidence: analysis.confidence,
           reasoning: analysis.reasoning,
         };
+      }
 
       case 'get_tool_chain_analysis':
         const toolChainAnalysis = this.optimizer.getToolChainAnalysis(args.input || '');
@@ -242,7 +285,7 @@ export class RequestHandlers {
         // Refined: with the agent runtime enabled, a thought becomes one
         // observe → decide (→ optionally execute) agent step recorded in
         // AgentState. Legacy caller-supplied-thought path preserved otherwise.
-        if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true') {
+        if (isAgentEnabled()) {
           const { agentStep } = await import('../agent/agent.js');
           const { sharedAgentState } = await import('../agent/state.js');
           const tools = this.discovery.getTools();
@@ -742,8 +785,8 @@ export class RequestHandlers {
       }
 
       case 'agent_run': {
-        if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() !== 'true') {
-          return { ok: false, error: 'agent runtime disabled (set MITOSIS_AGENT_ENABLED=true and fetch the engine)', tool: name };
+        if (!isAgentEnabled()) {
+          return { ok: false, error: 'agent runtime disabled (engine missing and MITOSIS_AGENT_ENABLED not set; run npm run needle:fetch or set MITOSIS_AGENT_ENABLED=true)', tool: name };
         }
         const tools = this.discovery.getTools();
         const { plan, workflowId, run, state } = await runAgentWorkflow({

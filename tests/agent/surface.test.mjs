@@ -50,11 +50,13 @@ describe('M8 handler surface', () => {
     assert.deepEqual(r.steps[0].result, { temp_c: 27, sky: 'clear', city: 'Jakarta' });
   });
 
-  test('agent_run disabled without env flag', async () => {
+  test('agent_run disabled with explicit opt-out', async () => {
+    process.env.MITOSIS_AGENT_ENABLED = 'false';
     const { h } = handlers(localTransport);
     const r = await h.handleToolCall('agent_run', { task: 'hi' });
     assert.equal(r.ok, false);
     assert.match(r.error, /disabled/);
+    delete process.env.MITOSIS_AGENT_ENABLED;
   });
 });
 
@@ -99,6 +101,18 @@ describe('M8 agent_run live', { skip: process.env.NEEDLE_LIVE === '1' ? false : 
       task: 'get weather in Jakarta', sessionId: r.sessionId,
     });
     assert.equal(r2.sessionId, r.sessionId);
+    delete process.env.MITOSIS_AGENT_ENABLED;
+  });
+
+  test('analyze_with_sequential_thinking plans with Needle, no templates', async () => {
+    process.env.MITOSIS_AGENT_ENABLED = 'true';
+    const { h } = handlers(localTransport);
+    const r = await h.handleToolCall('analyze_with_sequential_thinking', { problem: 'get weather in Jakarta' });
+    assert.equal(r.source, 'needle-agent');
+    assert.ok(r.thoughts.length >= 1);
+    assert.ok(r.thoughts.every(t => t.content.includes(':')));
+    assert.ok(r.suggestions[0].tools.length >= 1);
+    assert.ok(!JSON.stringify(r).match(/REVERSE ENGINEERING|COOKING ANALOGY|SERENDIPITY/));
     delete process.env.MITOSIS_AGENT_ENABLED;
   });
 });

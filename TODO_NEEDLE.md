@@ -53,12 +53,15 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Native-shape translation generalized (any primary emitting `{type, function_calls}`; confidence gate only for real Needle)
 - [x] `tests/agent/workflow.test.mjs` — 11 tests (transport, retries, cancel, registry, end-to-end, escape-proof)
 
-## Milestone 8 — MCP surface [x] live, 48/48 green
+## Milestone 8 — MCP surface [x] live, 68/68 green (1 skipped: openrouter arm)
 - [x] Transport bound in `server.ts` to real `handleToolCall` with non-reentrancy guard (`workflow_orchestrator`, `agent_run` refused inside runs)
-- [x] `agent_run` tool (gated on `MITOSIS_AGENT_ENABLED`), `workflow_status` + `workflow_cancel` (always listed)
+- [x] `agent_run` tool (auto-enabled with bundled engine), `workflow_status` + `workflow_cancel` (always listed)
 - [x] `agent_run` honors its own budget over the 10s interactive tool timeout (capped 300s)
+- [x] `analyze_with_sequential_thinking` Needle-backed (plan IS the analysis; canned templates only when agent off — no remote MCP involved, logic was local)
+- [x] Bundled-first enablement via `isAgentEnabled()`: on when engine present unless `MITOSIS_AGENT_ENABLED=false`; no env needed
+- [x] Runtime structure formalized in `workflow.ts` header (Needle → decision → state → executor → MCP → result → Needle)
 - [x] Legacy notices on `sequentialthinking`, `llm_decompose_task`, `llm_suggest_route`; behavior untouched
-- [x] `tests/agent/surface.test.mjs` — handler-level status/cancel/transport/disabled + live `agent_run`
+- [x] `tests/agent/surface.test.mjs` + `diagnostics.test.mjs` — handler status/cancel/transport/opt-out, enablement logic, live `agent_run`/`sequentialthinking`/analysis
 - [x] `stopServer()` SIGKILL fallback (no lingering engines)
 - [x] Live-test policy: retry stochastic model assertions (≤3), accept escalation-shaped outcomes keyless
 
@@ -76,17 +79,15 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] M7 evidence (`tests/agent/compare.test.mjs`): heuristic 0/3 expected-tool hits BY CONSTRUCTION (emits categories only); Needle 3/3 with real tools (~1.5–4.5s first-try). OpenRouter arm skipped keyless.
 - [ ] Still needs: OpenRouter arm with key + repeated runs for variance bounds before deleting anything
 
-## Benchmarks (`tests/agent/`) [x] suite live, 63/63 green (1 skipped: openrouter arm, keyless)
-- [x] `npm run test:agent` — 54 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast)
-- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 9 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns)
+## Benchmarks (`tests/agent/`) [x] suite live, 68/68 green (1 skipped: openrouter arm, keyless)
+- [x] `npm run test:agent` — 58 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast, enablement)
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 10 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns, Needle-backed analysis)
 - [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
-- [ ] Replanning / multi-observation / circular-dependency cases
-- [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)
 
-## Env (target)
+## Env (reference — agent is auto-enabled when the bundled engine is present)
 ```
-MITOSIS_AGENT_ENABLED=true / MITOSIS_AGENT_PROVIDER=needle
-NEEDLE_ENGINE_PATH=assets/needle/needle
+# Only needed to OPT OUT: MITOSIS_AGENT_ENABLED=false
+NEEDLE_ENGINE_PATH=assets/needle/needle       # default; override per platform
 NEEDLE_MODEL_PATH=assets/needle/needle2.cact
 NEEDLE_CONFIDENCE_THRESHOLD=0.6
 NEEDLE_PORT=18080 / NEEDLE_USE_SERVER=true

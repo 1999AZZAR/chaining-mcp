@@ -1,6 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { createServer } from 'node:net';
+import { bundledEnginePath } from './diagnostics.js';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,10 +19,9 @@ export interface NeedleConfig {
 }
 
 export function needleConfigFromEnv(): NeedleConfig {
-  const exe = process.platform === 'win32' ? 'needle.exe' : 'needle';
   return {
-    enabled: (process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true',
-    enginePath: process.env.NEEDLE_ENGINE_PATH || `assets/needle/${exe}`,
+    enabled: (process.env.MITOSIS_AGENT_ENABLED || 'true').toLowerCase() !== 'false',
+    enginePath: bundledEnginePath(),
     modelPath: process.env.NEEDLE_MODEL_PATH || 'assets/needle/needle2.cact',
     confidenceThreshold: parseFloat(process.env.NEEDLE_CONFIDENCE_THRESHOLD || '0.6'),
     timeoutMs: parseInt(process.env.NEEDLE_TIMEOUT_MS || '15000', 10),
