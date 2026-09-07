@@ -14,7 +14,7 @@ function handlers(transport) {
   if (transport) o.setTransport(transport);
   const h = new RequestHandlers(
     { getTools: () => fakeTools },
-    {}, {}, {}, {}, {}, {}, {},
+    {}, {}, {}, {}, {},
     o, undefined,
   );
   return { h, o };

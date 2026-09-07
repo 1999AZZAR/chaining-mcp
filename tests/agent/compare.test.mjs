@@ -52,6 +52,17 @@ describe('heuristic vs needle comparison', { skip: process.env.NEEDLE_LIVE === '
   });
 
   test('openrouter arm', { skip: process.env.OPENROUTER_API_KEY ? false : 'no OPENROUTER_API_KEY — arm skipped' }, async () => {
-    assert.ok(true);
+    // Genuine escalation-backend proof: one tiny free-tier call.
+    process.env.CHAINING_LLM_ENABLED = 'true';
+    try {
+      const { OpenRouterProvider } = await import('./.dist/agent/openrouter-provider.js');
+      const or = new OpenRouterProvider();
+      const h = await or.health();
+      assert.equal(h.ok, true);
+      const r = await or.generate({ prompt: 'Reply with exactly: OPENROUTER_OK', systemPrompt: 'You are a test probe.' });
+      assert.match(r.text, /OPENROUTER_OK/);
+    } finally {
+      delete process.env.CHAINING_LLM_ENABLED;
+    }
   });
 });

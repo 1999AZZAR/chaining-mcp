@@ -77,7 +77,7 @@ export const coreChainingTools: Tool[] = [
   },
   {
     name: 'sequentialthinking',
-    description: 'Think one step with the Mitosis agent: your thought is recorded as an observation in AgentState, Needle decides the next action (call_tool/revise/complete/escalate), and the result feeds the next step. Pass sessionId to continue a session. [Legacy caller-supplied-thought mode when MITOSIS_AGENT_ENABLED is off.]',
+    description: 'Think one step with the Mitosis agent: your thought is recorded as an observation in AgentState, Needle decides the next action (call_tool/revise/complete/escalate), and the result feeds the next step. Pass sessionId to continue a session.',
     inputSchema: {
       type: 'object',
       properties: {

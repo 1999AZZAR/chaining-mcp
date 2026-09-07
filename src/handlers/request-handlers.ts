@@ -1,8 +1,6 @@
 import { spawn } from 'child_process';
 import { MCPServerDiscovery } from '../core/discovery.js';
 import { SmartRouteOptimizer } from '../core/optimizer.js';
-import { SequentialThinkingIntegration } from '../integrations/sequential-integration.js';
-import { SequentialThinkingManager } from '../managers/sequential-thinking-manager.js';
 import { TimeManager } from '../managers/time-manager.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { AwesomeCopilotIntegration } from '../integrations/awesome-copilot-integration.js';
@@ -16,8 +14,6 @@ export class RequestHandlers {
   constructor(
     private discovery: MCPServerDiscovery,
     private optimizer: SmartRouteOptimizer,
-    private sequentialIntegration: SequentialThinkingIntegration,
-    private sequentialThinkingManager: SequentialThinkingManager,
     private timeManager: TimeManager,
     private promptRegistry: PromptRegistry,
     private awesomeCopilotIntegration: AwesomeCopilotIntegration,
@@ -217,63 +213,44 @@ export class RequestHandlers {
       case 'analyze_with_sequential_thinking': {
         const availableTools = this.discovery.getTools();
         // Needle-backed: the plan IS the sequential analysis — one validated
-        // tool chain instead of canned template thoughts. Legacy heuristic
-        // path preserved when the agent runtime is off.
-        if (isAgentEnabled()) {
-          const { planTask } = await import('../agent/agent.js');
-          const plan = await planTask(
-            String(args.problem || ''), '',
-            undefined, undefined,
-            availableTools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
-          );
-          const byName = new Map(availableTools.map(t => [t.name, t]));
-          const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
-          const knownShare = plan.steps.length ? planTools.length / plan.steps.length : 0;
-          return {
-            source: 'needle-agent',
-            thoughts: plan.steps.map(s => ({
-              number: s.step,
-              content: `${s.tool}: ${s.task}`,
-              type: 'planning',
-            })),
-            analysis: {
-              problemComplexity: plan.steps.length > 4 ? 'high' : plan.steps.length > 2 ? 'medium' : 'low',
-              toolAvailability: availableTools.length,
-              recommendedApproach: plan.steps.length <= 2 ? 'simple' : 'comprehensive',
-              keyInsights: plan.steps.map(s => `${s.tool} — ${s.task}`),
-              potentialChallenges: [],
-            },
-            suggestions: [{
-              id: `needle_plan_${Date.now()}`,
-              name: 'Needle agent plan',
-              description: `Validated ${plan.steps.length}-step tool chain for: ${String(args.problem || '').slice(0, 120)}`,
-              tools: planTools,
-              estimatedDuration: planTools.reduce((sum, t: any) => sum + (t.estimatedDuration || 500), 0),
-              complexity: Math.round(plan.steps.length * 10) / 10,
-              confidence: Math.round(knownShare * 100) / 100,
-              reasoning: `${planTools.length}/${plan.steps.length} planned tools resolved against the discovery registry`,
-            }],
-            confidence: Math.round(knownShare * 100) / 100,
-            reasoning: `Needle produced a validated ${plan.steps.length}-step chain; all reasoning is grounded in registry tools, no template thoughts.`,
-          };
-        }
-        const analysis = await this.sequentialIntegration.analyzeWorkflow(
-          args.problem,
-          availableTools,
-          args.criteria || {}
+        // tool chain instead of canned template thoughts. No remote MCP and
+        // no heuristic fallback here; planTask itself falls back to
+        // OpenRouter, then to the legacy heuristic, when Needle cannot plan.
+        const { planTask } = await import('../agent/agent.js');
+        const plan = await planTask(
+          String(args.problem || ''), '',
+          undefined, undefined,
+          availableTools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
         );
+        const byName = new Map(availableTools.map(t => [t.name, t]));
+        const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
+        const knownShare = plan.steps.length ? planTools.length / plan.steps.length : 0;
         return {
-          thoughts: analysis.thoughts,
-          analysis: analysis.analysis,
-          suggestions: analysis.suggestions.map(suggestion => ({
-            tools: suggestion.tools,
-            estimatedDuration: suggestion.estimatedDuration,
-            complexity: suggestion.complexity,
-            confidence: suggestion.confidence,
-            reasoning: suggestion.reasoning,
+          source: 'needle-agent',
+          thoughts: plan.steps.map(s => ({
+            number: s.step,
+            content: `${s.tool}: ${s.task}`,
+            type: 'planning',
           })),
-          confidence: analysis.confidence,
-          reasoning: analysis.reasoning,
+          analysis: {
+            problemComplexity: plan.steps.length > 4 ? 'high' : plan.steps.length > 2 ? 'medium' : 'low',
+            toolAvailability: availableTools.length,
+            recommendedApproach: plan.steps.length <= 2 ? 'simple' : 'comprehensive',
+            keyInsights: plan.steps.map(s => `${s.tool} — ${s.task}`),
+            potentialChallenges: [],
+          },
+          suggestions: [{
+            id: `needle_plan_${Date.now()}`,
+            name: 'Needle agent plan',
+            description: `Validated ${plan.steps.length}-step tool chain for: ${String(args.problem || '').slice(0, 120)}`,
+            tools: planTools,
+            estimatedDuration: planTools.reduce((sum, t: any) => sum + (t.estimatedDuration || 500), 0),
+            complexity: Math.round(plan.steps.length * 10) / 10,
+            confidence: Math.round(knownShare * 100) / 100,
+            reasoning: `${planTools.length}/${plan.steps.length} planned tools resolved against the discovery registry`,
+          }],
+          confidence: Math.round(knownShare * 100) / 100,
+          reasoning: `Needle produced a validated ${plan.steps.length}-step chain; all reasoning is grounded in registry tools, no template thoughts.`,
         };
       }
 
@@ -282,14 +259,14 @@ export class RequestHandlers {
         return toolChainAnalysis;
 
       case 'sequentialthinking': {
-        // Refined: with the agent runtime enabled, a thought becomes one
+        // Needle-backed sequential thinking: a thought becomes one
         // observe → decide (→ optionally execute) agent step recorded in
-        // AgentState. Legacy caller-supplied-thought path preserved otherwise.
-        if (isAgentEnabled()) {
-          const { agentStep } = await import('../agent/agent.js');
-          const { sharedAgentState } = await import('../agent/state.js');
-          const tools = this.discovery.getTools();
-          const step = await agentStep({
+        // AgentState. No remote sequentialthinking MCP, no caller-supplied
+        // thought storage — the model reasons, the state remembers.
+        const { agentStep } = await import('../agent/agent.js');
+        const { sharedAgentState } = await import('../agent/state.js');
+        const tools = this.discovery.getTools();
+        const step = await agentStep({
             task: String(args.task || args.thought || ''),
             observation: args.thought ? String(args.thought) : undefined,
             sessionId: args.sessionId ? String(args.sessionId) : undefined,
@@ -319,8 +296,6 @@ export class RequestHandlers {
             state: step.stats,
             recentState: step.tail,
           };
-        }
-        return await this.sequentialThinkingManager.processThought(args);
       }
 
       default:

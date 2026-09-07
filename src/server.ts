@@ -9,8 +9,6 @@ import {
 
 import { MCPServerDiscovery } from './core/discovery.js';
 import { SmartRouteOptimizer } from './core/optimizer.js';
-import { SequentialThinkingIntegration } from './integrations/sequential-integration.js';
-import { SequentialThinkingManager } from './managers/sequential-thinking-manager.js';
 import { TimeManager } from './managers/time-manager.js';
 import { PromptRegistry } from './prompts/prompt-registry.js';
 import { AwesomeCopilotIntegration } from './integrations/awesome-copilot-integration.js';
@@ -27,8 +25,6 @@ export class ChainingMCPServer {
   private server: Server;
   private discovery: MCPServerDiscovery;
   private optimizer: SmartRouteOptimizer;
-  private sequentialIntegration: SequentialThinkingIntegration;
-  private sequentialThinkingManager: SequentialThinkingManager;
   private timeManager: TimeManager;
   private promptRegistry: PromptRegistry;
   private awesomeCopilotIntegration: AwesomeCopilotIntegration;
@@ -43,8 +39,6 @@ export class ChainingMCPServer {
     // Initialize core services
     this.discovery = new MCPServerDiscovery();
     this.optimizer = new SmartRouteOptimizer();
-    this.sequentialIntegration = new SequentialThinkingIntegration();
-    this.sequentialThinkingManager = new SequentialThinkingManager();
     this.timeManager = new TimeManager();
     this.promptRegistry = new PromptRegistry();
     this.awesomeCopilotIntegration = new AwesomeCopilotIntegration();
@@ -57,7 +51,6 @@ export class ChainingMCPServer {
       this.discovery,
       this.promptRegistry,
       this.awesomeCopilotIntegration,
-      this.sequentialThinkingManager,
       this.workflowOrchestrator,
       this.llmManager
     );
@@ -65,8 +58,6 @@ export class ChainingMCPServer {
     this.requestHandlers = new RequestHandlers(
       this.discovery,
       this.optimizer,
-      this.sequentialIntegration,
-      this.sequentialThinkingManager,
       this.timeManager,
       this.promptRegistry,
       this.awesomeCopilotIntegration,
@@ -192,7 +183,6 @@ export class ChainingMCPServer {
         console.error(`Analyzed ${this.discovery.getTools().length} tools`);
 
         this.optimizer.setTools(this.discovery.getTools());
-        this.sequentialIntegration.setAvailableTools(this.discovery.getTools());
 
         this.isInitialized = true;
         console.error('Chaining MCP server initialization completed successfully');

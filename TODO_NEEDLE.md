@@ -73,10 +73,14 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Run result carries `escalations[]` trail (reason, latency context, provider)
 - [x] `tests/agent/escalation.test.mjs` — 8 tests (budget, threshold, no ping-pong, refusal mapping, disabled flag)
 
-## Milestone 7 — Remove heuristic cognition (only after benchmark wins)
-- [ ] Delete hardcoded fallbacks, generic-utility assumptions, fake reasoning
-- [ ] Keep deterministic validation/safety/fast paths
-- [x] M7 evidence (`tests/agent/compare.test.mjs`): heuristic 0/3 expected-tool hits BY CONSTRUCTION (emits categories only); Needle 3/3 with real tools (~1.5–4.5s first-try). OpenRouter arm skipped keyless.
+## Milestone 7 — Remove heuristic cognition [x] legacy sequential-think deleted
+- [x] Deleted `src/managers/sequential-thinking-manager.ts` (caller-supplied thought storage)
+- [x] Deleted `src/integrations/sequential-integration.ts` (canned templates + Math.random "reasoning")
+- [x] `sequentialthinking` + `analyze_with_sequential_thinking` are Needle-only paths now (no env gating, no legacy branches)
+- [x] `chaining://sequential/state` rebacked on shared AgentState (URI preserved, content = live sessions)
+- [x] Kept deterministic runtime: validation, registry guards, retries, budgets, saturation, limits
+- [x] Kept `LLMManager` heuristic fallback ONLY as last-resort inside `planTask` (both providers failed) — safety net, not cognition
+- [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~1.5–6s); OpenRouter arm proven live against vault key (`OPENROUTER_OK` via `openrouter/free`)
 - [ ] Still needs: OpenRouter arm with key + repeated runs for variance bounds before deleting anything
 
 ## Benchmarks (`tests/agent/`) [x] suite live, 68/68 green (1 skipped: openrouter arm, keyless)
@@ -84,7 +88,27 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 10 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns, Needle-backed analysis)
 - [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
 
-## Env (reference — agent is auto-enabled when the bundled engine is present)
+## Opencode config (minimal — needle + sequential thinking always on, bundled)
+```json
+{
+  "hela-mitosis": {
+    "type": "local",
+    "enabled": true,
+    "command": ["node", "/path/to/chaining-mcp/dist/index.js"],
+    "environment": {
+      "CHAINING_TOOL_TIMEOUT_MS": "10000",
+      "MEMORY_FILE_PATH": "/path/to/chaining-mcp/data/memory.json",
+      "AWESOME_COPILOT_ENABLED": "true",
+      "RELIABILITY_MONITORING_ENABLED": "true",
+      "GITHUB_TOKEN": "ghp_xxxx",
+      "OPENROUTER_API_KEY": "sk-or-xxx"
+    }
+  }
+}
+```
+Notes: no `MITOSIS_AGENT_ENABLED` / `NEEDLE_*` (auto-on when `assets/needle/needle` exists; fetch via `npm run needle:fetch`). `OPENROUTER_API_KEY` only feeds escalation (`AGENT_ESCALATION_ENABLED=false` to disable). `CHAINING_LLM_*` only matters for the standalone `llm_*` tools.
+
+## Env reference (tuning only)
 ```
 # Only needed to OPT OUT: MITOSIS_AGENT_ENABLED=false
 NEEDLE_ENGINE_PATH=assets/needle/needle       # default; override per platform

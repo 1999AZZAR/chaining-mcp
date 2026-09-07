@@ -1,9 +1,10 @@
 /**
- * Milestone 4: agent state infrastructure.
- * The legacy SequentialThinkingManager stays as the MCP-facing compat API.
- * This manager is the agent runtime's memory: observations, decisions, tool
- * calls/results, revisions, branches, escalation, and termination — bounded
- * per session and associable with a workflow.
+ * Milestone 4: agent state infrastructure — the sole memory of Mitosis
+ * sequential thinking. The old caller-supplied-thought manager and the
+ * canned-template integration are deleted; sessions here record
+ * observations, decisions, tool calls/results, revisions, branches,
+ * escalation, and termination — bounded per session and associable
+ * with a workflow.
  */
 
 export type TerminationReason =
@@ -109,6 +110,15 @@ export class AgentStateManager {
 
   delete(sessionId: string): boolean {
     return this.sessions.delete(sessionId);
+  }
+
+  /** Session summaries for diagnostics (no event bodies). */
+  list(): Array<{ id: string; task: string; workflowId?: string; events: number; droppedEvents: number; terminated?: TerminationReason; updatedAt: string }> {
+    return [...this.sessions.values()].map(s => ({
+      id: s.id, task: s.task, workflowId: s.workflowId,
+      events: s.events.length, droppedEvents: s.droppedEvents,
+      terminated: s.terminated?.reason, updatedAt: s.updatedAt,
+    }));
   }
 }
 

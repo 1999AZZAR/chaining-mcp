@@ -1,7 +1,6 @@
 import { MCPServerDiscovery } from '../core/discovery.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { AwesomeCopilotIntegration } from '../integrations/awesome-copilot-integration.js';
-import { SequentialThinkingManager } from '../managers/sequential-thinking-manager.js';
 import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
 
@@ -10,7 +9,6 @@ export class ResourceHandlers {
     private discovery: MCPServerDiscovery,
     private promptRegistry: PromptRegistry,
     private awesomeCopilotIntegration: AwesomeCopilotIntegration,
-    private sequentialThinkingManager: SequentialThinkingManager,
     private workflowOrchestrator: WorkflowOrchestrator,
     private llmManager?: LLMManager
   ) {}
@@ -116,15 +114,17 @@ export class ResourceHandlers {
           status: 'active',
         };
 
-      case 'chaining://sequential/state':
-        const seqStats = this.sequentialThinkingManager.getStatistics();
+      case 'chaining://sequential/state': {
+        // Now backed by the shared AgentState (Needle-driven sessions).
+        const { sharedAgentState } = await import('../agent/state.js');
+        const sessions = sharedAgentState().list();
         return {
-          totalThoughts: seqStats.totalThoughts,
-          totalBranches: seqStats.totalBranches,
-          revisions: seqStats.revisions,
-          averageThoughtLength: Math.round(seqStats.averageThoughtLength),
+          activeSessions: sessions.filter(s => !s.terminated).length,
+          totalSessions: sessions.length,
+          sessions,
           lastActivity: new Date().toISOString(),
         };
+      }
 
       case 'chaining://workflows/status':
         return {
