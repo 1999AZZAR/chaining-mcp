@@ -9,9 +9,9 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] `scripts/fetch-needle.mjs` + `npm run needle:fetch` (engine + `needle2.cact`, gitignored)
 - [x] Engine smoke-tested (0.84 one-shot, 0.77 via serve)
 - [x] Persistent `--serve` mode (`NEEDLE_PORT`, `NEEDLE_USE_SERVER=false` → one-shot)
-- [ ] `NEEDLE_TOOL_INDEX_PATH` for large catalogues
-- [ ] Diagnostics via MCP status tool
-- [ ] Tuned `.cact` flow (`NEEDLE_MODEL_PATH`) once we finetune
+- [x] Tool-index persistence by default (`assets/needle/tools.idx`; engine fingerprints by schema+model); 7-tool catalogue live test proves retrieval path + grammar constraint
+- [x] Tuned `.cact` status honest: CLI has no `--weights` flag → runs baked base model; `NEEDLE_MODEL_PATH` reported by health, reserved for a future libneedle path
+- [x] Diagnostics via `chaining://agent/status` + MCP status exposure
 
 ## Milestone 2 — Agent decision protocol [x] verified live
 - [x] Strict `AgentDecision` zod schema + validation
@@ -85,10 +85,9 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Kept: deterministic validation/registry/retries/budgets/saturation/limits, optimizer route ranking (labeled fast path), `summarize` truncation
 - [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~2.5–7.5s); OpenRouter arm proven live against vault key
 
-## Benchmarks (`tests/agent/`) [x] suite live, 74/74 green (keyed, 0 skipped)
-- [x] `npm run test:agent` — 63 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast, enablement, guidance)
-- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 11 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns, Needle-backed analysis, keyed OpenRouter arm)
-- [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
+## Benchmarks (`tests/agent/`) [x] suite live, 75/75 green (keyed, 0 skipped)
+- [x] `npm run test:agent` — 63 mock-provider tests
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 12 engine tests (incl. keyed OpenRouter arm, 3-case comparison, handler `agent_run`, refined steps, Needle-backed analysis, 7-tool catalogue)
 
 ## Prompt guidance in agent context [x] live, planning 3/3 preserved
 - [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only

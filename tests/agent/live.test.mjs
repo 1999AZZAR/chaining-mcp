@@ -21,6 +21,7 @@ describe('needle live', { skip: !LIVE || !existsSync(ENGINE) ? 'needs NEEDLE_LIV
     const n = new providerMod.NeedleProvider();
     const h = await n.health();
     assert.equal(h.ok, true);
+    assert.ok(h.detail.length > 0);
     n.stopServer();
   });
 
@@ -64,5 +65,38 @@ describe('needle live', { skip: !LIVE || !existsSync(ENGINE) ? 'needs NEEDLE_LIV
     assert.ok(JSON.parse(a.text).type);
     assert.ok(JSON.parse(b.text).type);
     n.stopServer();
+  });
+
+  test('large catalogue: retrieval engages, calls stay grammar-constrained', async () => {
+    // 7 tools forces the built-in retrieval head (top-5 subset); the tool
+    // index persists embeddings across runs via --tool-index.
+    const tools = [
+      { name: 'get_weather', description: 'Get weather for a city' },
+      { name: 'set_lights', description: 'Control room lights' },
+      { name: 'search_contact', description: 'Look up a contact' },
+      { name: 'send_message', description: 'Text a contact' },
+      { name: 'play_music', description: 'Play music' },
+      { name: 'set_thermostat', description: 'Set home temperature' },
+      { name: 'order_groceries', description: 'Order groceries online' },
+    ];
+    const names = new Set(tools.map(t => t.name));
+    let lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const n = new providerMod.NeedleProvider();
+      try {
+        const r = await n.generate({ prompt: 'dim the living room lights to 30', tools });
+        const p = JSON.parse(r.text);
+        assert.equal(p.type, 'call');
+        assert.ok(p.function_calls.length > 0);
+        for (const c of p.function_calls) assert.ok(names.has(c.name), `hallucinated tool ${c.name}`);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+      } finally {
+        n.stopServer();
+      }
+    }
+    assert.equal(lastErr, null);
   });
 });

@@ -1050,6 +1050,8 @@ console.log(llmStatus, llmUsage);
 | `AGENT_REPEATED_FAILURE_THRESHOLD` | `3` | Consecutive tool errors that force escalation |
 | `MITOSIS_AGENT_ENABLED` | *auto* | Bundled engine present = on. Set `false` to opt out |
 | `NEEDLE_ENGINE_PATH` | `assets/needle/needle` | Override for non-standard engine locations |
+| `NEEDLE_MODEL_PATH` | `assets/needle/needle2.cact` | Reserved: reported by health checks; the CLI runs the baked base model (no `--weights` flag yet — tuned `.cact` needs a future libneedle path) |
+| `NEEDLE_TOOL_INDEX_PATH` | `assets/needle/tools.idx` | Persisted tool-embedding cache; engine keys it by schema+model fingerprint, safe across toolsets and restarts |
 | `NEEDLE_CONFIDENCE_THRESHOLD` | `0.6` | Act at/above, escalate below |
 | `NEEDLE_PORT` | `18080` | Preferred serve port (free port picked on conflict) |
 | `CHAINING_LLM_ENABLED` | `false` | Enable built-in OpenRouter LLM intelligence features |

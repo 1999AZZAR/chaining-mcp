@@ -25,7 +25,9 @@ export function needleConfigFromEnv(): NeedleConfig {
     modelPath: process.env.NEEDLE_MODEL_PATH || 'assets/needle/needle2.cact',
     confidenceThreshold: parseFloat(process.env.NEEDLE_CONFIDENCE_THRESHOLD || '0.6'),
     timeoutMs: parseInt(process.env.NEEDLE_TIMEOUT_MS || '15000', 10),
-    toolIndexPath: process.env.NEEDLE_TOOL_INDEX_PATH,
+    // Persisted tool-embedding cache: the engine keys it by a fingerprint over
+    // the schemas + model, so one path safely serves many toolsets and restarts.
+    toolIndexPath: process.env.NEEDLE_TOOL_INDEX_PATH || 'assets/needle/tools.idx',
     servePort: parseInt(process.env.NEEDLE_PORT || '18080', 10),
     useServer: (process.env.NEEDLE_USE_SERVER || 'true').toLowerCase() !== 'false',
   };
@@ -56,11 +58,19 @@ export class NeedleProvider implements ModelProvider {
   }
 
   async health(): Promise<{ ok: boolean; detail?: string }> {
-    if (!this.config.enabled) return { ok: false, detail: 'MITOSIS_AGENT_ENABLED != true' };
+    if (!this.config.enabled) return { ok: false, detail: 'MITOSIS_AGENT_ENABLED == false' };
     if (!existsSync(this.config.enginePath)) return { ok: false, detail: `engine missing: ${this.config.enginePath} (run npm run needle:fetch)` };
+    // Tuned-model note: the CLI bakes in the base model (no --weights flag);
+    // NEEDLE_MODEL_PATH is reserved for a future engine/libneedle path that
+    // loads .cact archives. Presence is reported, never loaded, by this provider.
+    const modelNote = existsSync(this.config.modelPath)
+      ? `model file present (${this.config.modelPath})`
+      : `model file absent (${this.config.modelPath}); using baked base model`;
     return new Promise((resolve) => {
       execFile(this.config.enginePath, ['--help'], { timeout: 5000 }, (err, stdout) => {
-        resolve(err ? { ok: false, detail: String(err.message).slice(0, 160) } : { ok: true, detail: String(stdout).slice(0, 120) });
+        resolve(err
+          ? { ok: false, detail: String(err.message).slice(0, 160) }
+          : { ok: true, detail: `${String(stdout).slice(0, 100)} | ${modelNote}` });
       });
     });
   }
