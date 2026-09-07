@@ -9,6 +9,7 @@ import { WorkflowOrchestrator } from '../managers/workflow-orchestrator.js';
 import { LLMManager } from '../managers/llm-manager.js';
 import { runAgentWorkflow } from '../agent/workflow.js';
 import { isAgentEnabled } from '../agent/diagnostics.js';
+import { buildGuidance } from '../agent/guidance.js';
 
 export class RequestHandlers {
   constructor(
@@ -113,6 +114,7 @@ export class RequestHandlers {
             const plan = await planTask(
               args.task, summary, undefined, undefined,
               tools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
+              this.resolveGuidance(String(args.task || '')),
             );
             return {
               ok: true,
@@ -160,6 +162,24 @@ export class RequestHandlers {
 
       default:
         throw new Error(`Unknown LLM tool: ${name}`);
+    }
+  }
+
+  /** Tool declarations (with exact arg schemas) for Needle context. */
+  private agentToolDecls(): Array<{ name: string; description?: string; schema?: unknown }> {
+    return this.discovery.getTools().map(t => ({
+      name: t.name,
+      description: t.description,
+      schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined,
+    }));
+  }
+
+  /** Task-relevant prebuilt-prompt guidance for agent context (local, capped). */
+  private resolveGuidance(task: string): string {
+    try {
+      return buildGuidance(this.promptRegistry, task, this.discovery.getTools().map(t => t.name));
+    } catch {
+      return '';
     }
   }
 
@@ -221,6 +241,7 @@ export class RequestHandlers {
           String(args.problem || ''), '',
           undefined, undefined,
           availableTools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
+          this.resolveGuidance(String(args.problem || '')),
         );
         const byName = new Map(availableTools.map(t => [t.name, t]));
         const planTools = plan.steps.map(s => byName.get(s.tool || '')).filter(Boolean);
@@ -266,8 +287,9 @@ export class RequestHandlers {
         const { agentStep } = await import('../agent/agent.js');
         const { sharedAgentState } = await import('../agent/state.js');
         const tools = this.discovery.getTools();
+        const taskText = String(args.task || args.thought || '');
         const step = await agentStep({
-            task: String(args.task || args.thought || ''),
+            task: taskText,
             observation: args.thought ? String(args.thought) : undefined,
             sessionId: args.sessionId ? String(args.sessionId) : undefined,
             tools: tools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
@@ -277,6 +299,7 @@ export class RequestHandlers {
             },
             revision: args.isRevision ? `revises thought ${args.revisesThought || '?'}` : undefined,
             branch: args.branchId ? { branchId: String(args.branchId), fromEvent: args.branchFromThought } : undefined,
+            guidance: this.resolveGuidance(taskText),
             state: sharedAgentState(),
           });
           const n = Number(args.thoughtNumber) || (step.stats?.events ?? 1);
@@ -764,10 +787,12 @@ export class RequestHandlers {
           return { ok: false, error: 'agent runtime disabled (engine missing and MITOSIS_AGENT_ENABLED not set; run npm run needle:fetch or set MITOSIS_AGENT_ENABLED=true)', tool: name };
         }
         const tools = this.discovery.getTools();
+        const taskText = String(args.task || '');
         const { plan, workflowId, run, state } = await runAgentWorkflow({
-          task: String(args.task || ''),
+          task: taskText,
           toolSchemas: tools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
           orchestrator: this.workflowOrchestrator,
+          guidance: this.resolveGuidance(taskText),
           limits: {
             maxIterations: args.maxIterations || 8,
             maxToolCalls: args.maxToolCalls || 12,

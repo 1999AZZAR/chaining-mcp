@@ -28,6 +28,7 @@ Mitosis
 
 - **Bundled engine**: fetch once with `npm run needle:fetch` (downloads the ~15MB Needle 2 engine + weights from `Cactus-Compute/needle2` into gitignored `assets/needle/`). The runtime auto-enables when the engine is present; `MITOSIS_AGENT_ENABLED=false` opts out.
 - **Agent-first tools**: `agent_run` (full plan → execute → observe loop), `sequentialthinking` (one Needle-backed observe → decide → execute step over shared `AgentState`), `analyze_with_sequential_thinking` (the validated plan IS the analysis), plus `workflow_status` / `workflow_cancel`.
+- **Prompt guidance in context**: task-relevant prebuilt prompts (keyword + `expectedTools` overlap, top-2, ≤600 chars, local only) are injected into planning and turn-1 context — the 42-prompt registry now steers the agent, not just human callers.
 - **Escalation, not fallback**: OpenRouter (`OPENROUTER_API_KEY`) is used only on low confidence, refusal, malformed output, provider failure, or repeated tool failures — budgeted (`AGENT_MAX_ESCALATIONS`, default 1) with a recorded trail. Without a key the agent still runs fully offline.
 - **Diagnostics**: `chaining://agent/status` reports readiness without spawning the engine and never exposes keys.
 - **Verified**: `node scripts/test-agent.mjs` (mock suite) and `NEEDLE_LIVE=1 node scripts/test-agent.mjs` (live engine suite) — see [Testing](#building--testing).

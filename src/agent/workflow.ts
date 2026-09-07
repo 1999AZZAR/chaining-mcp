@@ -55,6 +55,8 @@ export interface AgentWorkflowInput {
   signal?: AbortSignal;
   providers?: { primary?: NeedleProvider; escalation?: ModelProvider };
   limits?: { maxIterations?: number; maxToolCalls?: number; maxExecutionMs?: number };
+  /** Task-relevant prompt guidance forwarded to planning and turn-1 context. */
+  guidance?: string;
 }
 
 /**
@@ -73,6 +75,7 @@ export async function runAgentWorkflow(input: AgentWorkflowInput): Promise<{
   const plan = await planTask(
     input.task, toolsSummary, input.signal, input.providers,
     input.toolSchemas.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
+    input.guidance,
   );
 
   const registry = new Set(input.toolSchemas.map(t => t.name));
@@ -92,6 +95,7 @@ export async function runAgentWorkflow(input: AgentWorkflowInput): Promise<{
       signal: input.signal,
       limits: input.limits,
       providers: input.providers,
+      guidance: input.guidance,
       state: { manager: state, workflowId },
     });
     return { plan, workflowId, run, state };

@@ -19,6 +19,8 @@ export interface AgentRunInput {
   state?: { manager: AgentStateManager; sessionId?: string; workflowId?: string };
   /** Escalation budget override (Milestone 6). Absent = env/defaults. */
   escalationPolicy?: EscalationPolicy;
+  /** Task-relevant prompt guidance (built by buildGuidance). Appended to turn-1 context only. */
+  guidance?: string;
 }
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
@@ -67,8 +69,9 @@ export function parseDecision(rawText: string): AgentDecision {
   return AgentDecisionSchema.parse(JSON.parse(cleaned));
 }
 
-function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], history: unknown[]): string {
+function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], history: unknown[], guidance?: string): string {
   const toolList = tools.map(t => `- ${t.name}${t.description ? ': ' + compact(t.description, 80) : ''}`).slice(0, 20).join('\n');
+  const guide = guidance ? `\n\nGuidance:\n${guidance}` : '';
   const trail = (history.slice(-6) as Array<Record<string, unknown>>).map((h, i) => {
     if (h.tool) return `${i + 1}. ${String(h.tool)}(${compact(h.args ?? {}, 100)}) -> ${h.error ? 'ERROR ' + compact(h.error) : 'ok ' + compact(h.result)}`;
     if (h.rejectedUnknownTool) return `${i + 1}. rejected unknown tool ${String(h.rejectedUnknownTool)}`;
@@ -77,7 +80,7 @@ function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], his
     if (h.malformedOutput) return `${i + 1}. malformed output, retry`;
     return `${i + 1}. ${compact(h, 120)}`;
   }).join('\n');
-  return `Task: ${compact(task, 300)}\n\nTools:\n${toolList}\n\nDone so far:\n${trail || '(nothing yet — pick the first tool call)'}`;
+  return `Task: ${compact(task, 300)}\n\nTools:\n${toolList}\n\nDone so far:\n${trail || '(nothing yet — pick the first tool call)'}${guide}`;
 }
 
 /**
@@ -141,7 +144,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       typeof h === 'object' && h !== null && 'tool' in h && 'result' in h);
     const prompt = (isPrimary(provider) && lastResult)
       ? `Result of ${String((lastResult as { tool: unknown }).tool)}: ${compact((lastResult as { result: unknown }).result, 400)}\nTask reminder: ${compact(input.task, 200)}`
-      : buildObservation(input.task, input.toolSchemas, history);
+      : buildObservation(input.task, input.toolSchemas, history, history.length ? undefined : input.guidance);
     const req: ModelRequest = {
       prompt,
       systemPrompt: 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose: {"action":"call_tool","tool":"...","args":{}} or {"action":"complete","result":...} or {"action":"escalate","reason":"..."} or {"action":"revise","note":"..."}.',
@@ -266,6 +269,8 @@ export interface AgentStepInput {
   /** Optional revision/branch markers mapped into state events. */
   revision?: string;
   branch?: { branchId: string; fromEvent?: number };
+  /** Task-relevant prompt guidance. Appended to first-step context only. */
+  guidance?: string;
 }
 
 /**
@@ -297,9 +302,10 @@ export async function agentStep(input: AgentStepInput): Promise<{
   const needleApi: NeedleApi = primary instanceof NeedleProvider ? primary : null;
   const knownTools = new Set(input.tools.map(t => t.name));
   const tail = manager.tail(session.id, 6);
+  const guide = input.guidance && tail.length <= 1 ? `\n\nGuidance:\n${input.guidance}` : '';
   const prompt = tail.length
-    ? `Task: ${compact(input.task, 300)}\n\nTools:\n${input.tools.slice(0, 20).map(t => `- ${t.name}`).join('\n')}\n\nSo far:\n${tail.join('\n')}`
-    : `Task: ${compact(input.task, 300)}`;
+    ? `Task: ${compact(input.task, 300)}\n\nTools:\n${input.tools.slice(0, 20).map(t => `- ${t.name}`).join('\n')}\n\nSo far:\n${tail.join('\n')}${guide}`
+    : `Task: ${compact(input.task, 300)}${guide}`;
 
   let provider: ModelProvider = primary;
   let escalated = false;
@@ -370,12 +376,14 @@ async function planIterative(
   toolDecls: PlanToolDecl[],
   signal?: AbortSignal,
   maxSteps = 6,
+  guidance?: string,
 ): Promise<AgentPlan> {
   const tools = toolDecls.map(t => ({ name: t.name, description: t.description || t.name, schema: t.schema || { type: 'object' } }));
   const known = new Set(tools.map(t => t.name));
   const api = needle as Partial<NeedleProvider>;
   try {
-    const res = await needle.generate({ prompt: task.slice(0, 500), signal, tools });
+    const prompt = guidance ? `${task.slice(0, 500)}\n\nGuidance:\n${guidance}` : task.slice(0, 500);
+    const res = await needle.generate({ prompt, signal, tools });
     const native = JSON.parse(res.text);
     const calls = (native.function_calls || []).filter((c: { name: string }) => known.has(c.name)).slice(0, maxSteps);
     if (!calls.length) throw new Error('needle produced no plan steps');
@@ -415,11 +423,12 @@ export async function planTask(
   signal?: AbortSignal,
   providers?: { primary?: NeedleProvider; escalation?: ModelProvider },
   toolDecls?: PlanToolDecl[],
+  guidance?: string,
 ): Promise<AgentPlan> {
   const needle = providers?.primary ?? new NeedleProvider();
   try {
     if (toolDecls && toolDecls.length) {
-      return await planIterative(needle, task, toolDecls, signal);
+      return await planIterative(needle, task, toolDecls, signal, 6, guidance);
     }
     const res = await needle.generate({
       prompt: `Break this task into ordered steps. Emit one define_step call per step.\n\nTask: ${task}\n\nAvailable capabilities:\n${availableToolsSummary.slice(0, 1500)}`,

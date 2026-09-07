@@ -83,10 +83,16 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] M7 evidence: heuristic 0/3 expected-tool hits BY CONSTRUCTION; Needle 3/3 (~1.5–6s); OpenRouter arm proven live against vault key (`OPENROUTER_OK` via `openrouter/free`)
 - [ ] Still needs: OpenRouter arm with key + repeated runs for variance bounds before deleting anything
 
-## Benchmarks (`tests/agent/`) [x] suite live, 68/68 green (1 skipped: openrouter arm, keyless)
-- [x] `npm run test:agent` — 58 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast, enablement)
-- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 10 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns, Needle-backed analysis)
+## Benchmarks (`tests/agent/`) [x] suite live, 73/73 green (keyed)
+- [x] `npm run test:agent` — 62 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast, enablement, guidance)
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 11 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns, Needle-backed analysis, keyed OpenRouter arm)
 - [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
+
+## Prompt guidance in agent context [x] live, planning 3/3 preserved
+- [x] `src/agent/guidance.ts` — `buildGuidance()`: keyword hits + `expectedTools` overlap scoring, top-2 prompts, ≤600 chars, local only
+- [x] Threaded as `guidance` into `planTask` (single-shot prompt), `agentRun` (turn-1 only), `agentStep` (first-step only), `runAgentWorkflow`
+- [x] Handler resolves via real `PromptRegistry` for `agent_run`, `sequentialthinking`, `analyze_with_sequential_thinking`, `llm_decompose_task`
+- [x] `tests/agent/guidance.test.mjs` — retrieval, empty case, overlap-only, caps
 
 ## Opencode config (minimal — needle + sequential thinking always on, bundled)
 ```json
