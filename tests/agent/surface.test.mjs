@@ -75,4 +75,30 @@ describe('M8 agent_run live', { skip: process.env.NEEDLE_LIVE === '1' ? false : 
     }
     delete process.env.MITOSIS_AGENT_ENABLED;
   });
+
+  test('sequentialthinking becomes one Needle-backed agent step', async () => {
+    process.env.MITOSIS_AGENT_ENABLED = 'true';
+    const { h } = handlers(localTransport);
+    const r = await h.handleToolCall('sequentialthinking', {
+      thought: 'need the Jakarta weather first',
+      thoughtNumber: 1, totalThoughts: 3, nextThoughtNeeded: true,
+      task: 'get weather in Jakarta',
+    });
+    // Legacy-shaped fields preserved for compat callers.
+    assert.equal(r.thoughtNumber, 1);
+    assert.equal(typeof r.nextThoughtNeeded, 'boolean');
+    // Agent-shaped fields prove the refined path ran.
+    assert.equal(r.source, 'needle-agent');
+    assert.ok(r.sessionId);
+    assert.ok(r.decision && typeof r.decision.action === 'string');
+    assert.ok(r.state);
+    // Second thought continues the same session.
+    const r2 = await h.handleToolCall('sequentialthinking', {
+      thought: 'weather known, wrap up',
+      thoughtNumber: 2, totalThoughts: 3, nextThoughtNeeded: false,
+      task: 'get weather in Jakarta', sessionId: r.sessionId,
+    });
+    assert.equal(r2.sessionId, r.sessionId);
+    delete process.env.MITOSIS_AGENT_ENABLED;
+  });
 });

@@ -29,7 +29,10 @@ export class RequestHandlers {
     const defaultMs = parseInt(process.env.CHAINING_TOOL_TIMEOUT_MS || '10000', 10);
     // agent_run carries its own budget (plan + multi-turn inference routinely
     // exceeds the interactive tool timeout); honor it with an upper bound.
-    const timeoutMs = name === 'agent_run'
+    // sequentialthinking gets the same treatment when it fronts the agent.
+    const agentFronted = name === 'agent_run' ||
+      (name === 'sequentialthinking' && (process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true');
+    const timeoutMs = agentFronted
       ? Math.min(Number(args?.maxExecutionMs) || 60000, 300000)
       : defaultMs;
     const timeoutPromise = new Promise((_, reject) =>
@@ -235,8 +238,47 @@ export class RequestHandlers {
         const toolChainAnalysis = this.optimizer.getToolChainAnalysis(args.input || '');
         return toolChainAnalysis;
 
-      case 'sequentialthinking':
+      case 'sequentialthinking': {
+        // Refined: with the agent runtime enabled, a thought becomes one
+        // observe → decide (→ optionally execute) agent step recorded in
+        // AgentState. Legacy caller-supplied-thought path preserved otherwise.
+        if ((process.env.MITOSIS_AGENT_ENABLED || '').toLowerCase() === 'true') {
+          const { agentStep } = await import('../agent/agent.js');
+          const { sharedAgentState } = await import('../agent/state.js');
+          const tools = this.discovery.getTools();
+          const step = await agentStep({
+            task: String(args.task || args.thought || ''),
+            observation: args.thought ? String(args.thought) : undefined,
+            sessionId: args.sessionId ? String(args.sessionId) : undefined,
+            tools: tools.map(t => ({ name: t.name, description: t.description, schema: (t.inputSchema as any)?.properties ? t.inputSchema : undefined })),
+            execute: args.execute !== false,
+            executor: {
+              executeTool: (tool, params, signal) => this.workflowOrchestrator.executeTool(tool, (params as Record<string, any>) || {}, { signal }),
+            },
+            revision: args.isRevision ? `revises thought ${args.revisesThought || '?'}` : undefined,
+            branch: args.branchId ? { branchId: String(args.branchId), fromEvent: args.branchFromThought } : undefined,
+            state: sharedAgentState(),
+          });
+          const n = Number(args.thoughtNumber) || (step.stats?.events ?? 1);
+          const total = Number(args.totalThoughts) || n;
+          return {
+            // Legacy-shaped fields (compat): thought numbering now mirrors state.
+            thoughtNumber: n,
+            totalThoughts: Math.max(total, n),
+            nextThoughtNeeded: step.decision.action === 'call_tool' || step.decision.action === 'revise',
+            // Agent-shaped fields.
+            source: 'needle-agent',
+            sessionId: step.sessionId,
+            decision: step.decision,
+            result: step.result,
+            error: step.error,
+            escalated: step.escalated,
+            state: step.stats,
+            recentState: step.tail,
+          };
+        }
         return await this.sequentialThinkingManager.processThought(args);
+      }
 
       default:
         throw new Error(`Unknown core chaining tool: ${name}`);

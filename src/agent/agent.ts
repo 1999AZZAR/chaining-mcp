@@ -2,6 +2,7 @@ import { AgentDecisionSchema, AgentPlanSchema, type AgentDecision, type AgentPla
 import { NeedleProvider } from './needle-provider.js';
 import { OpenRouterProvider } from './openrouter-provider.js';
 import type { AgentStateManager, TerminationReason } from './state.js';
+import { sharedAgentState } from './state.js';
 import { EscalationController, escalationPolicyFromEnv, type EscalationPolicy, type EscalationRecord, type EscalationTrigger } from './escalation.js';
 
 export interface AgentLoopLimits { maxIterations: number; maxToolCalls: number; maxExecutionMs: number }
@@ -35,6 +36,35 @@ function looksNative(text: string): boolean {
   } catch {
     return false;
   }
+}
+
+type NeedleApi = Pick<NeedleProvider, 'isConfident' | 'confidenceOf'> | null;
+
+/**
+ * Translate one raw model output into a strict AgentDecision. Shared by the
+ * full loop and the single-step (sequentialthinking) path.
+ */
+export function translateNativeDecision(rawText: string, needleApi: NeedleApi): string {
+  if (!looksNative(rawText)) return rawText;
+  try {
+    const native = JSON.parse(rawText);
+    const calls = native.function_calls || [];
+    if (native.type === 'respond') {
+      return JSON.stringify({ action: 'complete', result: native.reasoning || calls, reasoning: native.reasoning });
+    } else if (!calls.length) {
+      return JSON.stringify({ action: 'escalate', reason: 'needle refused: no declared tool serves this request', context: native });
+    } else if (needleApi && !needleApi.isConfident(rawText)) {
+      return JSON.stringify({ action: 'escalate', reason: `needle confidence ${needleApi.confidenceOf(rawText)} below threshold`, context: native });
+    }
+    return JSON.stringify({ action: 'call_tool', tool: calls[0].name, args: calls[0].arguments || {}, reasoning: native.reasoning });
+  } catch {
+    return rawText;
+  }
+}
+
+export function parseDecision(rawText: string): AgentDecision {
+  const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+  return AgentDecisionSchema.parse(JSON.parse(cleaned));
 }
 
 function buildObservation(task: string, tools: AgentRunInput['toolSchemas'], history: unknown[]): string {
@@ -140,25 +170,10 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     // NeedleProvider and to any primary whose output carries the native shape
     // (type + function_calls); confidence gating only when a Needle API exists.
     let rawText = res.text;
-    if (isPrimary(provider) && looksNative(rawText)) {
-      try {
-        const native = JSON.parse(rawText);
-        const calls = native.function_calls || [];
-        if (native.type === 'respond') {
-          rawText = JSON.stringify({ action: 'complete', result: native.reasoning || calls, reasoning: native.reasoning });
-        } else if (!calls.length) {
-          rawText = JSON.stringify({ action: 'escalate', reason: 'needle refused: no declared tool serves this request', context: native });
-        } else if (needleApi && !needleApi.isConfident(res.text)) {
-          rawText = JSON.stringify({ action: 'escalate', reason: `needle confidence ${needleApi.confidenceOf(res.text)} below threshold`, context: native });
-        } else {
-          rawText = JSON.stringify({ action: 'call_tool', tool: calls[0].name, args: calls[0].arguments || {}, reasoning: native.reasoning });
-        }
-      } catch { /* fall through to malformed path */ }
-    }
+    if (isPrimary(provider)) rawText = translateNativeDecision(rawText, needleApi);
     let decision: AgentDecision;
     try {
-      const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      decision = AgentDecisionSchema.parse(JSON.parse(cleaned));
+      decision = parseDecision(rawText);
     } catch {
       history.push({ malformedOutput: res.text.slice(0, 500) });
       rec({ kind: 'malformed_output', excerpt: res.text.slice(0, 200) });
@@ -231,6 +246,117 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   } finally {
     needleApi?.stopServer();
   }
+}
+
+export interface AgentStepInput {
+  /** Ongoing task this step belongs to. */
+  task: string;
+  /** New observation (the caller's thought) recorded before deciding. */
+  observation?: string;
+  /** Resume this session; created when absent. */
+  sessionId?: string;
+  workflowId?: string;
+  tools: Array<{ name: string; description?: string; schema?: unknown }>;
+  /** When true and the decision is call_tool, execute immediately via executor. */
+  execute?: boolean;
+  executor?: AgentToolExecutor;
+  signal?: AbortSignal;
+  providers?: { primary?: ModelProvider; escalation?: ModelProvider };
+  state?: AgentStateManager;
+  /** Optional revision/branch markers mapped into state events. */
+  revision?: string;
+  branch?: { branchId: string; fromEvent?: number };
+}
+
+/**
+ * One agent turn: observe → decide (→ optionally execute) with everything
+ * recorded in AgentState. This is what the refined `sequentialthinking` tool
+ * calls — Mitosis thinking IS an agent step, not caller-supplied prose.
+ */
+export async function agentStep(input: AgentStepInput): Promise<{
+  sessionId: string;
+  decision: AgentDecision;
+  result?: unknown;
+  error?: string;
+  escalated: boolean;
+  stats: ReturnType<AgentStateManager['stats']>;
+  tail: string[];
+}> {
+  const manager = input.state ?? sharedAgentState();
+  const existing = input.sessionId ? manager.snapshot(input.sessionId) : undefined;
+  const session = existing ?? manager.create(input.task, input.sessionId, input.workflowId);
+  const rec = (e: Parameters<AgentStateManager['record']>[1]): void => {
+    try { manager.record(session.id, e); } catch { /* recording never breaks the step */ }
+  };
+  if (input.observation) rec({ kind: 'observation', text: input.observation });
+  if (input.revision) rec({ kind: 'revision', note: input.revision });
+  if (input.branch) rec({ kind: 'branch', branchId: input.branch.branchId, fromEvent: input.branch.fromEvent ?? 0 });
+
+  const primary: ModelProvider = input.providers?.primary ?? new NeedleProvider();
+  const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
+  const needleApi: NeedleApi = primary instanceof NeedleProvider ? primary : null;
+  const knownTools = new Set(input.tools.map(t => t.name));
+  const tail = manager.tail(session.id, 6);
+  const prompt = tail.length
+    ? `Task: ${compact(input.task, 300)}\n\nTools:\n${input.tools.slice(0, 20).map(t => `- ${t.name}`).join('\n')}\n\nSo far:\n${tail.join('\n')}`
+    : `Task: ${compact(input.task, 300)}`;
+
+  let provider: ModelProvider = primary;
+  let escalated = false;
+  let rawText: string;
+  try {
+    const res = await provider.generate({
+      prompt, signal: input.signal, timeoutMs: 15000,
+      tools: input.tools.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
+    });
+    rawText = translateNativeDecision(res.text, needleApi);
+  } catch (e) {
+    // Single budgeted escalation hop, then surface the outcome.
+    provider = escalation;
+    escalated = true;
+    rec({ kind: 'escalation', reason: 'primary provider failed', provider: 'escalation' });
+    const res = await provider.generate({ prompt, signal: input.signal, timeoutMs: 15000 });
+    rawText = res.text;
+  } finally {
+    (primary as Partial<NeedleProvider>).stopServer?.();
+  }
+
+  let decision: AgentDecision;
+  try {
+    decision = parseDecision(rawText);
+  } catch {
+    rec({ kind: 'malformed_output', excerpt: rawText.slice(0, 200) });
+    throw new Error('agent step: model returned malformed decision');
+  }
+  rec({ kind: 'decision', decision });
+
+  let result: unknown;
+  let error: string | undefined;
+  if (decision.action === 'call_tool') {
+    if (!knownTools.has(decision.tool)) {
+      error = `tool '${decision.tool}' is not in the agent tool registry`;
+      rec({ kind: 'rejected_tool', tool: decision.tool });
+    } else if (input.execute && input.executor) {
+      rec({ kind: 'tool_call', tool: decision.tool, args: decision.args });
+      try {
+        result = await input.executor.executeTool(decision.tool, decision.args, input.signal);
+        rec({ kind: 'tool_result', tool: decision.tool, result });
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+        rec({ kind: 'tool_result', tool: decision.tool, error });
+      }
+    } else {
+      rec({ kind: 'tool_call', tool: decision.tool, args: decision.args });
+    }
+  } else if (decision.action === 'escalate') {
+    escalated = true;
+    rec({ kind: 'escalation', reason: decision.reason });
+  } else if (decision.action === 'revise') {
+    rec({ kind: 'revision', note: decision.note });
+  } else if (decision.action === 'complete') {
+    try { manager.terminate(session.id, escalated ? 'escalated' : 'completed'); } catch { /* best effort */ }
+  }
+  return { sessionId: session.id, decision, result, error, escalated, stats: manager.stats(session.id), tail: manager.tail(session.id, 6) };
 }
 
 export interface PlanToolDecl { name: string; description?: string; schema?: unknown }

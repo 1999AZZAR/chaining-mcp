@@ -77,7 +77,7 @@ export const coreChainingTools: Tool[] = [
   },
   {
     name: 'sequentialthinking',
-    description: 'A detailed tool for dynamic and reflective problem-solving through thoughts. [Legacy compat API — prefer agent_run when MITOSIS_AGENT_ENABLED=true.]',
+    description: 'Think one step with the Mitosis agent: your thought is recorded as an observation in AgentState, Needle decides the next action (call_tool/revise/complete/escalate), and the result feeds the next step. Pass sessionId to continue a session. [Legacy caller-supplied-thought mode when MITOSIS_AGENT_ENABLED is off.]',
     inputSchema: {
       type: 'object',
       properties: {
@@ -90,6 +90,9 @@ export const coreChainingTools: Tool[] = [
         branchFromThought: { type: 'number', description: 'Branching point thought number' },
         branchId: { type: 'string', description: 'Branch identifier' },
         needsMoreThoughts: { type: 'boolean', description: 'If more thoughts are needed' },
+        task: { type: 'string', description: 'Ongoing task this step belongs to (agent mode; defaults to the thought)' },
+        sessionId: { type: 'string', description: 'Continue an existing agent session (agent mode)' },
+        execute: { type: 'boolean', default: true, description: 'Execute a call_tool decision immediately (agent mode)' },
       },
       required: ['thought', 'nextThoughtNeeded', 'thoughtNumber', 'totalThoughts'],
     },

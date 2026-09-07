@@ -35,13 +35,14 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] Saturation guard: identical re-call → `complete` with last result
 - [ ] Model variance across identical prompts (0.97 vs 0.005 conf) — needs benchmark + finetune; loop handles via escalation
 
-## Milestone 4 — Sequential thinking → agent state [x] live, 25/25 green
-- [x] `src/agent/state.ts` — `AgentStateManager`: sessions, typed events, bounded history + drop count, termination reasons, `tail()`, `stats()`, workflow association
+## Milestone 4 — Sequential thinking → agent state [x] live, refined
+- [x] `src/agent/state.ts` — `AgentStateManager`: sessions, typed events, bounded history + drop count, termination reasons, `tail()`, `stats()`, workflow association, `sharedAgentState()` singleton
 - [x] `agentRun(state: {manager, sessionId?, workflowId?})` records decisions/calls/results/revisions/escalations/rejections/malformed + termination; absent = zero behavior change
-- [x] `tests/agent/state.test.mjs` — 7 tests (lifecycle, bounds, tail, workflow grouping, limit-breach termination)
-- [x] Fixed live flakes: per-instance free serve ports (was: fixed 18080 → cross-test bind conflicts), startup readiness probe
-- [ ] Legacy `SequentialThinkingManager` stays as compat shim (untouched)
-- [ ] Expose session snapshot via MCP tool (Milestone 8)
+- [x] `agentStep()` — one observe → decide (→ optionally execute) turn against shared state
+- [x] `sequentialthinking` refined: agent-enabled → Needle-backed step (thought = observation, revision/branch mapped to state events, call_tool executed via orchestrator transport); legacy path when disabled; legacy response fields preserved
+- [x] `translateNativeDecision()` / `parseDecision()` extracted and shared by loop + step
+- [x] `tests/agent/step.test.mjs` — 7 tests; live handler test proves session continuity across thoughts
+- [x] `sequentialthinking` inherits the agent time budget when fronting the agent
 
 ## Milestone 5 — Agentic workflow loop [x] live, 36/36 green
 - [x] `MCPTransport` seam: `setTransport()` (e.g. `RequestHandlers.handleToolCall`); unset = legacy placeholder, zero behavior change
@@ -75,9 +76,9 @@ Base: `main` @ `b22a843`. Main stays stable; all work here.
 - [x] M7 evidence (`tests/agent/compare.test.mjs`): heuristic 0/3 expected-tool hits BY CONSTRUCTION (emits categories only); Needle 3/3 with real tools (~1.5–4.5s first-try). OpenRouter arm skipped keyless.
 - [ ] Still needs: OpenRouter arm with key + repeated runs for variance bounds before deleting anything
 
-## Benchmarks (`tests/agent/`) [x] suite live, 55/55 green (1 skipped: openrouter arm, keyless)
-- [x] `npm run test:agent` — 47 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, workflow/transport/registry, surface, replan, parallel, circular, failFast)
-- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 8 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison)
+## Benchmarks (`tests/agent/`) [x] suite live, 63/63 green (1 skipped: openrouter arm, keyless)
+- [x] `npm run test:agent` — 54 mock-provider tests (routing, limits, escalation, saturation, malformed, recovery, state, step/translate, workflow/transport/registry, surface, replan, parallel, circular, failFast)
+- [x] `npm run test:agent:live` (`NEEDLE_LIVE=1`) — 9 engine tests (health, call shape+confidence, planTask, serve multi-turn, handler `agent_run`, 3-case comparison, refined `sequentialthinking` ×2 turns)
 - [x] `chaining://agent/status` diagnostics resource (spawn-free, no keys)
 - [ ] Replanning / multi-observation / circular-dependency cases
 - [ ] Heuristic vs Needle vs OpenRouter comparison harness (success, accuracy, latency, tokens, escalation rate)

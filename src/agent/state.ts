@@ -111,3 +111,11 @@ export class AgentStateManager {
     return this.sessions.delete(sessionId);
   }
 }
+
+let shared: AgentStateManager | undefined;
+
+/** Process-wide session store so sequential single steps share one AgentState. */
+export function sharedAgentState(): AgentStateManager {
+  if (!shared) shared = new AgentStateManager();
+  return shared;
+}
