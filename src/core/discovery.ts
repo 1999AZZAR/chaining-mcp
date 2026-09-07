@@ -35,10 +35,10 @@ export class MCPServerDiscovery {
 
     // Load configuration
     this.config = await this.configLoader.loadConfig();
-    
+
     // Get config paths from configuration
     const configPaths = this.configLoader.expandPaths(this.config.configPaths);
-    
+
     // Add package.json files that might contain MCP server configs (bounded)
     const packageJsonPaths = await this.findPackageJsonFiles();
     configPaths.push(...packageJsonPaths);
@@ -82,7 +82,7 @@ export class MCPServerDiscovery {
         'mcp-servers.json',
         '.mcp/servers.json',
       ];
-      
+
       const files: string[] = [];
       for (const pattern of patterns) {
         const matches = await glob(pattern, {
@@ -92,7 +92,7 @@ export class MCPServerDiscovery {
         });
         files.push(...matches);
       }
-      
+
       return files;
     } catch (error) {
       return [];
@@ -146,7 +146,7 @@ export class MCPServerDiscovery {
    */
   private discoverFromEnvironment(): MCPServerInfo[] {
     const servers: MCPServerInfo[] = [];
-    
+
     // Look for MCP_SERVERS environment variable
     const mcpServers = process.env.MCP_SERVERS;
     if (mcpServers) {
@@ -359,14 +359,14 @@ export class MCPServerDiscovery {
    */
   private inferCategory(name: string, description?: string): string {
     const text = `${name} ${description || ''}`.toLowerCase();
-    
+
     // Check against configured category rules
     for (const rule of this.config.categoryRules) {
       if (text.includes(rule.pattern)) {
         return rule.category;
       }
     }
-    
+
     return 'utility'; // Default category
   }
 
@@ -375,14 +375,14 @@ export class MCPServerDiscovery {
    */
   private estimateComplexity(name: string, description?: string): number {
     const text = `${name} ${description || ''}`.toLowerCase();
-    
+
     // Check against configured complexity rules
     for (const rule of this.config.complexityRules) {
       if (text.includes(rule.pattern)) {
         return rule.complexity;
       }
     }
-    
+
     return 3; // Default complexity
   }
 
@@ -391,14 +391,14 @@ export class MCPServerDiscovery {
    */
   private estimateDuration(name: string, description?: string): number {
     const text = `${name} ${description || ''}`.toLowerCase();
-    
+
     // Check against configured duration rules
     for (const rule of this.config.durationRules) {
       if (text.includes(rule.pattern)) {
         return rule.duration;
       }
     }
-    
+
     return 500; // Default duration
   }
 

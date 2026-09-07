@@ -47,7 +47,7 @@ export class TimeManager {
     }
 
     const now = new Date();
-    
+
     // Create a date formatter for the specific timezone
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
@@ -59,7 +59,7 @@ export class TimeManager {
       second: '2-digit',
       hour12: false
     });
-    
+
     const parts = formatter.formatToParts(now);
     const year = parts.find(p => p.type === 'year')?.value || '2024';
     const month = parts.find(p => p.type === 'month')?.value || '01';
@@ -67,19 +67,19 @@ export class TimeManager {
     const hour = parts.find(p => p.type === 'hour')?.value || '00';
     const minute = parts.find(p => p.type === 'minute')?.value || '00';
     const second = parts.find(p => p.type === 'second')?.value || '00';
-    
+
     const timeInTimezone = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
-    
+
     // Get day of week
     const dayFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       weekday: 'long'
     });
     const dayOfWeek = dayFormatter.format(now);
-    
+
     // Calculate DST status
     const isDST = this.isDST(now, timezone);
-    
+
     return {
       timezone: timezone,
       datetime: timeInTimezone.toISOString().replace('Z', this.formatOffset(this.getTimezoneOffset(timezone))),
@@ -113,13 +113,13 @@ export class TimeManager {
     // Create a date for today with the specified time in source timezone
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     // Create the source time by combining today's date with the specified time
     const sourceTime = new Date(today.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
-    
+
     // Convert to target timezone using proper timezone conversion
     const targetTime = new Date(sourceTime.toLocaleString("en-US", { timeZone: targetTimezone }));
-    
+
     // Calculate timezone offsets
     const sourceOffset = this.getTimezoneOffset(sourceTimezone);
     const targetOffset = this.getTimezoneOffset(targetTimezone);
@@ -164,7 +164,7 @@ export class TimeManager {
     const absHours = Math.abs(hours);
     const wholeHours = Math.floor(absHours);
     const minutes = Math.round((absHours - wholeHours) * 60);
-    
+
     if (minutes === 0) {
       return `${sign}${wholeHours.toString().padStart(2, '0')}:00`;
     } else {
@@ -177,10 +177,10 @@ export class TimeManager {
       // Create dates for January and July to compare offsets
       const jan = new Date(date.getFullYear(), 0, 1);
       const jul = new Date(date.getFullYear(), 6, 1);
-      
+
       const janOffset = this.getTimezoneOffset(timezone);
       const julOffset = this.getTimezoneOffset(timezone);
-      
+
       // If July offset is different from January, DST is likely in effect
       return Math.abs(julOffset) !== Math.abs(janOffset);
     } catch {

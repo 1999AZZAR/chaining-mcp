@@ -1017,7 +1017,7 @@ export class RequestHandlers {
         const rawQ = String(args.query || args.q || args.search || args.keyword || args.keywords || args.topic || args.filter || '').trim();
         const q = rawQ.toLowerCase();
         const allPrompts = this.promptRegistry.getAllPrompts();
-        
+
         let filteredPrompts: any[] = [];
         if (!q) {
           filteredPrompts = allPrompts;
@@ -1075,7 +1075,7 @@ export class RequestHandlers {
         const rawQ = String(args.query || args.q || args.search || args.keyword || args.keywords || args.topic || args.filter || '').trim();
         const q = rawQ.toLowerCase();
         const allResourceSets = this.promptRegistry.getAllResourceSets();
-        
+
         let filteredResourceSets: any[] = [];
         if (!q) {
           filteredResourceSets = allResourceSets;

@@ -1,0 +1,40 @@
+# Pre-commit gate for chaining-mcp (Mitosis).
+# Install once: `pre-commit install`  (then every commit runs the checks below).
+# The local hook runs the deterministic mock agent suite (compiles + 70+ tests);
+# the live suite + e2e need the bundled engine (+ optional OPENROUTER key) and are
+# deliberately NOT in the commit path — run them before merge:
+#   NEEDLE_LIVE=1 node scripts/test-agent.mjs
+#   OPENROUTER_API_KEY=sk-or-xxx CHAINING_LLM_ENABLED=true node scripts/test-e2e.mjs
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+
+  - repo: local
+    hooks:
+      - id: mitosis-build
+        name: TypeScript build (tsc)
+        entry: node node_modules/typescript/bin/tsc
+        language: system
+        pass_filenames: false
+        always_run: true
+        # Restrict modification-tracking to source so the gitignored dist/
+        # output of tsc never flags this hook as "files were modified".
+        files: '^(src/|scripts/|package\.json|tsconfig\.json)$'
+      - id: mitosis-agent-suite
+        name: Agent suite (mock providers, deterministic)
+        entry: node scripts/test-agent.mjs
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        # Same reason: tests recompile tests/agent/.dist (gitignored); scope
+        # tracking to real source so pass = no modifications reported.
+        files: '^(src/|tests/|scripts/|test-|README\.md|package\.json)$'

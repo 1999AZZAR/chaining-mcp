@@ -63,7 +63,7 @@ export const defaultDiscoveryConfig: DiscoveryConfig = {
     './mcp-servers.json',
     './.mcp/servers.json',
   ],
-  
+
   essentialServers: [
     {
       name: 'awesome-copilot',

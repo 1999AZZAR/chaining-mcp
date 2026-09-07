@@ -6,23 +6,23 @@ import { AnalyzeWithSequentialThinkingSchema } from '../types.js';
  */
 class SchemaAnalyzer {
   private schemaCache = new Map<string, any>();
-  
+
   /**
    * Analyze Zod schema structure and generate intelligent JSON Schema
    */
   analyzeSchema(zodSchema: z.ZodSchema): any {
     const schemaKey = this.generateSchemaKey(zodSchema);
-    
+
     if (this.schemaCache.has(schemaKey)) {
       return this.schemaCache.get(schemaKey);
     }
-    
+
     const jsonSchema = this.generateDynamicSchema(zodSchema);
     this.schemaCache.set(schemaKey, jsonSchema);
-    
+
     return jsonSchema;
   }
-  
+
   /**
    * Generate a unique key for schema caching
    */
@@ -33,7 +33,7 @@ class SchemaAnalyzer {
       return zodSchema.toString();
     }
   }
-  
+
   /**
    * Dynamically generate JSON Schema from Zod schema
    */
@@ -41,67 +41,67 @@ class SchemaAnalyzer {
     if (zodSchema instanceof z.ZodObject) {
       return this.processObjectSchema(zodSchema);
     }
-    
+
     if (zodSchema instanceof z.ZodArray) {
       return this.processArraySchema(zodSchema);
     }
-    
+
     if (zodSchema instanceof z.ZodString) {
       return this.processStringSchema(zodSchema);
     }
-    
+
     if (zodSchema instanceof z.ZodNumber) {
       return this.processNumberSchema(zodSchema);
     }
-    
+
     if (zodSchema instanceof z.ZodBoolean) {
       return this.processBooleanSchema(zodSchema);
     }
-    
+
     if (zodSchema instanceof z.ZodOptional) {
       return this.processOptionalSchema(zodSchema);
     }
-    
+
     return { type: 'object', properties: {} };
   }
-  
+
   /**
    * Process Zod object schema with intelligent property analysis
    */
   private processObjectSchema(zodSchema: z.ZodObject<any>): any {
     const properties: any = {};
     const required: string[] = [];
-    
+
     for (const [key, value] of Object.entries(zodSchema.shape)) {
       const propertySchema = this.generateDynamicSchema(value as z.ZodSchema);
       properties[key] = propertySchema;
-      
+
       // Intelligent required field detection
       if (!(value instanceof z.ZodOptional)) {
         required.push(key);
       }
     }
-    
+
     return {
       type: 'object',
       properties,
       required: required.length > 0 ? required : undefined,
     };
   }
-  
+
   /**
    * Process Zod array schema with intelligent item analysis
    */
   private processArraySchema(zodSchema: z.ZodArray<any>): any {
     const itemSchema = this.generateDynamicSchema(zodSchema.element);
-    
+
     return {
       type: 'array',
       items: itemSchema,
       description: this.generateArrayDescription(zodSchema),
     };
   }
-  
+
   /**
    * Process Zod string schema with intelligent validation
    */
@@ -110,7 +110,7 @@ class SchemaAnalyzer {
       type: 'string',
       description: this.generateStringDescription(zodSchema),
     };
-    
+
     // Add intelligent constraints
     if (zodSchema._def.checks) {
       for (const check of zodSchema._def.checks) {
@@ -125,10 +125,10 @@ class SchemaAnalyzer {
         }
       }
     }
-    
+
     return schema;
   }
-  
+
   /**
    * Process Zod number schema with intelligent constraints
    */
@@ -137,7 +137,7 @@ class SchemaAnalyzer {
       type: 'number',
       description: this.generateNumberDescription(zodSchema),
     };
-    
+
     if (zodSchema._def.checks) {
       for (const check of zodSchema._def.checks) {
         if (check.kind === 'min') {
@@ -149,10 +149,10 @@ class SchemaAnalyzer {
         }
       }
     }
-    
+
     return schema;
   }
-  
+
   /**
    * Process Zod boolean schema
    */
@@ -162,14 +162,14 @@ class SchemaAnalyzer {
       description: this.generateBooleanDescription(zodSchema),
     };
   }
-  
+
   /**
    * Process Zod optional schema
    */
   private processOptionalSchema(zodSchema: z.ZodOptional<any>): any {
     return this.generateDynamicSchema(zodSchema._def.innerType);
   }
-  
+
   /**
    * Generate intelligent array description
    */
@@ -177,7 +177,7 @@ class SchemaAnalyzer {
     const elementType = this.getElementType(zodSchema.element);
     return `Array of ${elementType} items`;
   }
-  
+
   /**
    * Generate intelligent string description
    */
@@ -191,7 +191,7 @@ class SchemaAnalyzer {
     }
     return 'Text string';
   }
-  
+
   /**
    * Generate intelligent number description
    */
@@ -203,14 +203,14 @@ class SchemaAnalyzer {
     }
     return 'Numeric value';
   }
-  
+
   /**
    * Generate intelligent boolean description
    */
   private generateBooleanDescription(zodSchema: z.ZodBoolean): string {
     return 'Boolean value (true/false)';
   }
-  
+
   /**
    * Get element type for arrays
    */
@@ -237,10 +237,10 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       properties: {},
     };
   }
-  
+
   // For AnalyzeToolsSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
-      zodSchema.shape.serverName instanceof z.ZodOptional && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
+      zodSchema.shape.serverName instanceof z.ZodOptional &&
       zodSchema.shape.category instanceof z.ZodOptional) {
     return {
       type: 'object',
@@ -256,9 +256,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       },
     };
   }
-  
+
   // For GenerateRouteSuggestionsSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.task instanceof z.ZodString) {
     return {
       type: 'object',
@@ -284,10 +284,10 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['task'],
     };
   }
-  
+
   // For SequentialThinkingSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
-      zodSchema.shape.thought instanceof z.ZodString && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
+      zodSchema.shape.thought instanceof z.ZodString &&
       zodSchema.shape.nextThoughtNeeded instanceof z.ZodBoolean) {
     return {
       type: 'object',
@@ -336,9 +336,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['thought', 'nextThoughtNeeded', 'thoughtNumber', 'totalThoughts'],
     };
   }
-  
+
   // For GetCurrentTimeSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.timezone instanceof z.ZodString) {
     return {
       type: 'object',
@@ -351,9 +351,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['timezone'],
     };
   }
-  
+
   // For CreateEntitiesSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.entities instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -366,8 +366,8 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
             properties: {
               name: { type: 'string', description: 'The name of the entity' },
               entityType: { type: 'string', description: 'The type of the entity' },
-              observations: { 
-                type: 'array', 
+              observations: {
+                type: 'array',
                 items: { type: 'string' },
                 description: 'An array of observation contents associated with the entity'
               },
@@ -379,9 +379,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['entities'],
     };
   }
-  
+
   // For CreateRelationsSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.relations instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -403,9 +403,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['relations'],
     };
   }
-  
+
   // For AddObservationsSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.observations instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -417,8 +417,8 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
             type: 'object',
             properties: {
               entityName: { type: 'string', description: 'The name of the entity to add the observations to' },
-              contents: { 
-                type: 'array', 
+              contents: {
+                type: 'array',
                 items: { type: 'string' },
                 description: 'An array of observation contents to add'
               },
@@ -430,9 +430,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['observations'],
     };
   }
-  
+
   // For DeleteEntitiesSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.entityNames instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -446,9 +446,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['entityNames'],
     };
   }
-  
+
   // For DeleteObservationsSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.deletions instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -460,8 +460,8 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
             type: 'object',
             properties: {
               entityName: { type: 'string', description: 'The name of the entity containing the observations' },
-              observations: { 
-                type: 'array', 
+              observations: {
+                type: 'array',
                 items: { type: 'string' },
                 description: 'An array of observations to delete'
               },
@@ -473,9 +473,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['deletions'],
     };
   }
-  
+
   // For DeleteRelationsSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.relations instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -497,9 +497,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['relations'],
     };
   }
-  
+
   // For SearchNodesSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.query instanceof z.ZodString) {
     return {
       type: 'object',
@@ -512,9 +512,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['query'],
     };
   }
-  
+
   // For OpenNodesSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.names instanceof z.ZodArray) {
     return {
       type: 'object',
@@ -528,11 +528,11 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['names'],
     };
   }
-  
+
   // For ConvertTimeSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
-      zodSchema.shape.source_timezone instanceof z.ZodString && 
-      zodSchema.shape.time instanceof z.ZodString && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
+      zodSchema.shape.source_timezone instanceof z.ZodString &&
+      zodSchema.shape.time instanceof z.ZodString &&
       zodSchema.shape.target_timezone instanceof z.ZodString) {
     return {
       type: 'object',
@@ -553,7 +553,7 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['source_timezone', 'time', 'target_timezone'],
     };
   }
-  
+
   // For AnalyzeWithSequentialThinkingSchema - check by exact schema reference
   if (zodSchema === AnalyzeWithSequentialThinkingSchema) {
     return {
@@ -587,9 +587,9 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['problem'],
     };
   }
-  
+
   // For GetToolChainAnalysisSchema
-  if (zodSchema instanceof z.ZodObject && zodSchema.shape && 
+  if (zodSchema instanceof z.ZodObject && zodSchema.shape &&
       zodSchema.shape.input instanceof z.ZodString) {
     return {
       type: 'object',
@@ -615,7 +615,7 @@ export function getToolInputSchema(zodSchema: z.ZodSchema): any {
       required: ['input'],
     };
   }
-  
+
   // Fallback for unknown schemas
   return {
     type: 'object',

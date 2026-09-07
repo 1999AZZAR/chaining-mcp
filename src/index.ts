@@ -4,7 +4,7 @@ import { ChainingMCPServer } from './server.js';
 
 async function main() {
   const server = new ChainingMCPServer();
-  
+
   // Handle graceful shutdown
   process.on('SIGINT', async () => {
     console.error('Shutting down Chaining MCP Server...');
