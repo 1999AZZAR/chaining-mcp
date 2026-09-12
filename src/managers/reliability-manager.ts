@@ -61,11 +61,11 @@ export class ReliabilityManager {
    * Initialize reliability metrics
    */
   private initializeMetrics(): void {
-    this.metrics.uptime = Date.now() - this.startTime.getTime();
-    setInterval(() => {
+    const timer = setInterval(() => {
       this.metrics.uptime = Date.now() - this.startTime.getTime();
       this.updateErrorRate();
     }, 60000); // Update every minute
+    if (typeof timer.unref === 'function') timer.unref();
   }
 
   /**

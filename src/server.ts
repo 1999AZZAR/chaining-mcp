@@ -19,6 +19,8 @@ import { allTools } from './tools/tool-registry.js';
 import { chainingResources } from './resources/resource-definitions.js';
 import { ResourceHandlers } from './resources/resource-handlers.js';
 import { RequestHandlers } from './handlers/request-handlers.js';
+import { HttpAdapter } from './transport/http-adapter.js';
+import { RunStore } from './agent/run-store.js';
 
 export class ChainingMCPServer {
   private server: Server;
@@ -31,6 +33,8 @@ export class ChainingMCPServer {
   private llmManager: LLMManager;
   private resourceHandlers: ResourceHandlers;
   private requestHandlers: RequestHandlers;
+  private runStore: RunStore;
+  private httpAdapter?: HttpAdapter;
   private isInitialized: boolean = false;
 
   constructor() {
@@ -75,8 +79,15 @@ export class ChainingMCPServer {
       return this.requestHandlers.handleToolCall(toolName, parameters);
     });
 
+    this.runStore = new RunStore();
+    this.workflowOrchestrator.attachRunStore(this.runStore);
+
     // Initialize MCP server
-    this.server = new Server(
+    this.server = this.createMcpServer();
+  }
+
+  public createMcpServer(): Server {
+    const server = new Server(
       {
         name: 'chaining-mcp-server',
         version: '1.0.0',
@@ -89,19 +100,20 @@ export class ChainingMCPServer {
       }
     );
 
-    this.setupHandlers();
+    this.setupHandlers(server);
+    return server;
   }
 
-  private setupHandlers(): void {
+  private setupHandlers(server: Server = this.server): void {
     // List tools handler
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
         tools: allTools,
       };
     });
 
     // Call tool handler
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
       try {
@@ -126,14 +138,14 @@ export class ChainingMCPServer {
     });
 
     // List resources handler
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, async () => {
       return {
         resources: chainingResources,
       };
     });
 
     // Read resource handler
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       const { uri } = request.params;
 
       try {
@@ -190,11 +202,29 @@ export class ChainingMCPServer {
   }
 
   /**
-   * Start the server
+   * Start the server (stdio by default, http opt-in)
    */
-  async start(): Promise<void> {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error('Chaining MCP Server started and running on stdio');
+  async start(options: { transport?: 'stdio' | 'http'; port?: number; host?: string } = {}): Promise<void> {
+    const transportMode = options.transport || (process.env.MCP_TRANSPORT === 'http' ? 'http' : 'stdio');
+    if (transportMode === 'http') {
+      const port = options.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8011);
+      const host = options.host ?? process.env.HOST ?? '0.0.0.0';
+      this.httpAdapter = new HttpAdapter(() => this.createMcpServer(), { port, host, runStore: this.runStore });
+      await this.httpAdapter.start();
+    } else {
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      console.error('Chaining MCP Server started and running on stdio');
+    }
+  }
+
+  /**
+   * Stop the server gracefully
+   */
+  async stop(): Promise<void> {
+    if (this.httpAdapter) {
+      await this.httpAdapter.close();
+    }
+    this.runStore.close();
   }
 }
