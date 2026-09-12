@@ -82,7 +82,7 @@ export class TimeManager {
 
     return {
       timezone: timezone,
-      datetime: timeInTimezone.toISOString().replace('Z', this.formatOffset(this.getTimezoneOffset(timezone))),
+      datetime: timeInTimezone.toISOString().replace('Z', this.formatOffset(this.getTimezoneOffset(timezone) / (1000 * 60 * 60))),
       day_of_week: dayOfWeek,
       is_dst: isDST
     };

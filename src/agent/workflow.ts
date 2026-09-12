@@ -24,6 +24,7 @@ import type { WorkflowOrchestratorInput } from '../types.js';
 import { agentRun, planTask, type AgentToolExecutor } from './agent.js';
 import type { AgentPlan } from './schemas.js';
 import { AgentStateManager } from './state.js';
+import { RunStore } from './run-store.js';
 import type { ModelProvider } from './schemas.js';
 import type { NeedleProvider } from './needle-provider.js';
 
@@ -83,9 +84,26 @@ export async function runAgentWorkflow(input: AgentWorkflowInput): Promise<{
   input.orchestrator.setAllowedTools([...registry]);
 
   const workflowId = `agent-${Date.now().toString(36)}`;
+  // P0-B1: durable twin of the in-memory AgentState. Store open failure
+  // degrades to memory-only; the agent loop itself never depends on SQLite.
+  let store: RunStore | undefined;
+  try {
+    store = new RunStore();
+    input.orchestrator.attachRunStore(store);
+    store.createRun(input.task, { runId: workflowId, workflowId });
+  } catch {
+    store = undefined;
+  }
+  let callSeq = 0;
   const executor: AgentToolExecutor = {
-    executeTool: (tool, args, signal) =>
-      input.orchestrator.executeTool(tool, (args as Record<string, unknown>) || {}, { serverName: input.serverName, signal }),
+    executeTool: (tool, args, signal) => {
+      callSeq += 1;
+      return input.orchestrator.executeTool(tool, (args as Record<string, unknown>) || {}, {
+        serverName: input.serverName,
+        signal,
+        run: store ? { run_id: workflowId, step_id: `call-${callSeq}`, attempt: 1, policy_profile: 'full-access' } : undefined,
+      });
+    },
   };
   try {
     const run = await agentRun({
@@ -98,6 +116,10 @@ export async function runAgentWorkflow(input: AgentWorkflowInput): Promise<{
       guidance: input.guidance,
       state: { manager: state, workflowId },
     });
+    if (store) {
+      store.recordEvent(workflowId, 'agent_end', { action: run.decision.action });
+      store.finishRun(workflowId, run.decision.action === 'complete' ? 'completed' : 'failed');
+    }
     return { plan, workflowId, run, state };
   } finally {
     input.orchestrator.clearAllowedTools();

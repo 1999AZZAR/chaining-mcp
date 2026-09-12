@@ -197,6 +197,7 @@ export const WorkflowStepSchema = z.object({
   outputMapping: z.record(z.string()).optional().describe('Map outputs from this step to input parameters for dependent steps'),
   retryOnFailure: z.boolean().optional().describe('Whether to retry this step on failure'),
   maxRetries: z.number().optional().describe('Maximum number of retries'),
+  idempotent: z.boolean().optional().describe('P0-B3: true = safe to re-run after an unknown outcome; false/absent = resume must NOT blindly replay'),
 });
 
 export const WorkflowOrchestratorSchema = z.object({

@@ -167,6 +167,9 @@ LLM: `llm_query`, `llm_decompose_task` (Needle-planned), `llm_suggest_route` (Ne
 | `GITHUB_TOKEN` | *optional* | Live Awesome Copilot syncing |
 | `MCP_DISCOVERY_CONFIG_PATHS` / `MCP_SERVERS` | *auto* | Discovery config |
 | `MEMORY_FILE_PATH` | `./data/memory.json` | Persistent cache file |
+| `HELA_POLICY_PROFILE` | `full-access` | Capability policy profile (`full-access` = legacy behavior; `constrained` denies R3 tools such as remote shell) |
+| `HELA_RUNSTORE_PATH` | `./hela-runs.db` | SQLite WAL run/event store for durable workflows + kill-9 resume |
+| `HELA_NEEDLE_THRESHOLD_<FAMILY>` | per-family | Override Needle confidence threshold for a tool family, e.g. `HELA_NEEDLE_THRESHOLD_SHELL=0.8` (strictest family among a call's tools wins) |
 
 ### Zero-Key & Offline
 

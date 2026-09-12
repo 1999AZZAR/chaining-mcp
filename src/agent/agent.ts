@@ -1,5 +1,6 @@
 import { AgentDecisionSchema, AgentPlanSchema, type AgentDecision, type AgentPlan, type ModelProvider, type ModelRequest } from './schemas.js';
 import { NeedleProvider } from './needle-provider.js';
+import { scopeToolsForTask } from './capability-graph.js';
 import { OpenRouterProvider } from './openrouter-provider.js';
 import type { AgentStateManager, TerminationReason } from './state.js';
 import { sharedAgentState } from './state.js';
@@ -22,6 +23,9 @@ export interface AgentRunInput {
   escalationPolicy?: EscalationPolicy;
   /** Task-relevant prompt guidance (built by buildGuidance). Appended to turn-1 context only. */
   guidance?: string;
+  /** P1-C4: capability-first routing — scope the planner's tool list to the
+   *  task's capabilities. Default off (full catalog, behavior unchanged). */
+  capabilityRouting?: boolean;
 }
 
 const DEFAULT_LIMITS: AgentLoopLimits = { maxIterations: 8, maxToolCalls: 12, maxExecutionMs: 60000 };
@@ -108,7 +112,10 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const primary: ModelProvider = needle ?? input.providers!.primary!;
   const needleApi: Pick<NeedleProvider, 'isConfident' | 'confidenceOf' | 'resetConversation' | 'stopServer'> | null = needle;
   const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
-  const knownTools = new Set(input.toolSchemas.map(t => t.name));
+  // P1-C4: capability-first scope (falls back to full catalog on no signal).
+  const scope = input.capabilityRouting ? scopeToolsForTask(input.toolSchemas, input.task) : null;
+  const toolSchemas = scope && scope.scoped ? scope.tools : input.toolSchemas;
+  const knownTools = new Set(toolSchemas.map(t => t.name));
   const history: unknown[] = [];
   let toolCalls = 0;
   let lastCallSig: string | undefined;
@@ -174,13 +181,13 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       typeof h === 'object' && h !== null && 'tool' in h && 'result' in h);
     const prompt = (isPrimary(provider) && lastResult)
       ? `Result of ${String((lastResult as { tool: unknown }).tool)}: ${compact((lastResult as { result: unknown }).result, 400)}\nTask reminder: ${compact(input.task, 200)}`
-      : buildObservation(input.task, input.toolSchemas, history, history.length ? undefined : input.guidance);
+      : buildObservation(input.task, toolSchemas, history, history.length ? undefined : input.guidance);
     const req: ModelRequest = {
       prompt,
       systemPrompt: 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose: {"action":"call_tool","tool":"...","args":{}} or {"action":"complete","result":...} or {"action":"escalate","reason":"..."} or {"action":"revise","note":"..."}.',
       signal: input.signal,
       timeoutMs: 8000,
-      tools: input.toolSchemas.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
+      tools: toolSchemas.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
     };
     let res;
     try {
@@ -309,6 +316,8 @@ export interface AgentStepInput {
   branch?: { branchId: string; fromEvent?: number };
   /** Task-relevant prompt guidance. Appended to first-step context only. */
   guidance?: string;
+  /** P1-C4: capability-first routing (same semantics as agentRun). */
+  capabilityRouting?: boolean;
 }
 
 /**
@@ -339,11 +348,13 @@ export async function agentStep(input: AgentStepInput): Promise<{
   const primary: ModelProvider = input.providers?.primary ?? new NeedleProvider();
   const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
   const needleApi: NeedleApi = primary instanceof NeedleProvider ? primary : null;
-  const knownTools = new Set(input.tools.map(t => t.name));
+  const stepScope = input.capabilityRouting ? scopeToolsForTask(input.tools, input.task) : null;
+  const stepTools = stepScope && stepScope.scoped ? stepScope.tools : input.tools;
+  const knownTools = new Set(stepTools.map(t => t.name));
   const tail = manager.tail(session.id, 6);
   const guide = input.guidance && tail.length <= 1 ? `\n\nGuidance:\n${input.guidance}` : '';
   const prompt = tail.length
-    ? `Task: ${compact(input.task, 300)}\n\nTools:\n${input.tools.slice(0, 20).map(t => `- ${t.name}`).join('\n')}\n\nSo far:\n${tail.join('\n')}${guide}`
+    ? `Task: ${compact(input.task, 300)}\n\nTools:\n${stepTools.slice(0, 20).map(t => `- ${t.name}`).join('\n')}\n\nSo far:\n${tail.join('\n')}${guide}`
     : `Task: ${compact(input.task, 300)}${guide}`;
 
   let provider: ModelProvider = primary;
@@ -362,7 +373,7 @@ export async function agentStep(input: AgentStepInput): Promise<{
   try {
     const res = await provider.generate({
       prompt, signal: input.signal, timeoutMs: 15000, systemPrompt: decisionSystem,
-      tools: input.tools.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
+      tools: stepTools.map(t => ({ name: t.name, description: t.description, schema: t.schema })),
     });
     rawText = translateNativeDecision(res.text, needleApi);
     // Needle succeeded but refused / low-confidence / malformed: the escalate

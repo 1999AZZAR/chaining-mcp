@@ -1,5 +1,21 @@
 import { z } from 'zod';
 import { WorkflowStep, WorkflowOrchestratorInput } from '../types.js';
+import { checkCapability, resolveProfile, type HelaCapabilityContract, type HelaInvocationMeta } from '../agent/capability-policy.js';
+import type { RunStore } from '../agent/run-store.js';
+import { wrapHelaResult } from '../agent/hela-result.js';
+
+export interface WorkflowRunOptions {
+  /** Durable store for step records; enables resume after restart. */
+  runStore?: RunStore;
+  /** Skip steps already recorded completed for this workflow id. */
+  resume?: boolean;
+  /**
+   * P0-B3: explicit operator opt-in to re-run 'unknown'-outcome steps
+   * (orphaned running / expired handles). Default false = unknown steps
+   * are reported, never blindly replayed.
+   */
+  retryUnknown?: boolean;
+}
 
 /**
  * Milestone 5 transport seam. When set (e.g. bound to
@@ -44,10 +60,17 @@ export class WorkflowOrchestrator {
   private transport?: MCPTransport;
   /** Registry guard: when set, agent-driven executeTool rejects anything not listed. */
   private allowedTools?: Set<string>;
+  /** Durable run store (P0-B1). Attached per process; unset = memory-only. */
+  private runStore?: RunStore;
 
   /** Bind the real MCP transport (e.g. RequestHandlers.handleToolCall). */
   setTransport(transport: MCPTransport): void {
     this.transport = transport;
+  }
+
+  /** Attach a durable RunStore; step records then survive restarts. */
+  attachRunStore(store: RunStore): void {
+    this.runStore = store;
   }
 
   /** Restrict agent-driven tool calls to an explicit registry. */
@@ -64,17 +87,52 @@ export class WorkflowOrchestrator {
    * transported, cancellable. Retries are NOT applied here — the agent loop
    * decides re-attempts from observations; workflow steps use step config.
    */
-  async executeTool(toolName: string, parameters: Record<string, any> = {}, opts: { serverName?: string; signal?: AbortSignal } = {}): Promise<any> {
+  async executeTool(toolName: string, parameters: Record<string, any> = {}, opts: { serverName?: string; signal?: AbortSignal; contract?: HelaCapabilityContract; run?: HelaInvocationMeta; envelope?: boolean } = {}): Promise<any> {
     if (opts.signal?.aborted) throw new Error(`tool '${toolName}' aborted before execution`);
     if (this.allowedTools && !this.allowedTools.has(toolName)) {
       throw new Error(`tool '${toolName}' is not in the agent tool registry`);
     }
-    return this.callMCPServerTool(opts.serverName || 'local', toolName, parameters, opts.signal);
+    if (opts.contract) {
+      const decision = checkCapability(opts.contract, resolveProfile());
+      if (!decision.allowed) throw new Error(`policy denied: ${decision.reason}`);
+    }
+    // P0-B2: propagate run_id/step_id to the durable store when attached.
+    const store = this.runStore;
+    const runId = opts.run?.run_id;
+    const stepId = opts.run?.step_id;
+    if (store && runId && stepId) store.startStep(runId, stepId, opts.serverName || 'local', toolName, parameters);
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await this.callMCPServerTool(opts.serverName || 'local', toolName, parameters, opts.signal);
+      if (store && runId && stepId) {
+        // RunStore keeps the RAW payload so resume restores raw results.
+        store.saveStepResult(runId, stepId, result);
+        store.finishStep(runId, stepId, 'completed', 'ok');
+      }
+      // P1-C1: opt-in canonical envelope; default raw path unchanged.
+      if (opts.envelope) {
+        return wrapHelaResult(result, {
+          serverName: opts.serverName || 'local', toolName,
+          contract: opts.contract, run: opts.run, startedAt,
+        });
+      }
+      return result;
+    } catch (error) {
+      if (store && runId && stepId) {
+        store.finishStep(runId, stepId, 'failed', error instanceof Error ? error.message : 'Unknown error');
+      }
+      throw error;
+    }
   }
 
-  async executeWorkflow(input: WorkflowOrchestratorInput, signal?: AbortSignal): Promise<WorkflowExecutionResult> {
+  async executeWorkflow(input: WorkflowOrchestratorInput, signal?: AbortSignal, runOpts: WorkflowRunOptions = {}): Promise<WorkflowExecutionResult> {
     const startTime = Date.now();
     const workflowId = input.workflowId;
+    const store = runOpts.runStore || this.runStore;
+
+    // P0-B1/B2: durable run record; re-invoking the same workflow id with
+    // resume:true skips steps already recorded completed (kill -9 safe).
+    if (store) store.createRun(input.description || input.name || workflowId, { runId: workflowId, workflowId });
 
     // Initialize workflow execution
     const execution: WorkflowExecutionResult = {
@@ -92,14 +150,25 @@ export class WorkflowOrchestrator {
       // Build execution plan
       const executionPlan = this.buildExecutionPlan(input.steps);
 
-      // Execute steps in order
+      // Execute steps in order. P0-B3: on resume first reconcile orphaned
+      // 'running' steps (dead process) into 'unknown' — outcome genuinely
+      // unknown, never auto-treated as failed or silently replayed.
+      let resumed = new Set<string>();
+      let unknowns = new Set<string>();
+      if (runOpts.resume && store) {
+        const orphaned = store.markOrphanedRunningAsUnknown(workflowId);
+        if (orphaned > 0) store.recordEvent(workflowId, 'resume_reconcile', { orphaned, note: 'running -> unknown' });
+        resumed = store.completedStepIds(workflowId);
+        unknowns = store.unknownStepIds(workflowId);
+        store.recordEvent(workflowId, 'resume', { resumed: [...resumed], unknowns: [...unknowns], retryUnknown: !!runOpts.retryUnknown });
+      }
       for (const stepGroup of executionPlan) {
         if (signal?.aborted) {
           execution.status = 'cancelled';
           execution.error = 'workflow cancelled';
           break;
         }
-        const stepPromises = stepGroup.map(step => this.executeStep(step, input, execution, signal));
+        const stepPromises = stepGroup.map(step => this.executeStep(step, input, execution, signal, { store, resumed, unknowns, retryUnknown: runOpts.retryUnknown }));
         await Promise.all(stepPromises);
       }
 
@@ -124,6 +193,10 @@ export class WorkflowOrchestrator {
       execution.executionTime = Date.now() - startTime;
       execution.completedAt = new Date().toISOString();
       this.activeWorkflows.set(workflowId, execution);
+      if (store) {
+        store.recordEvent(workflowId, 'workflow_end', { status: execution.status, error: execution.error });
+        store.finishRun(workflowId, execution.status === 'completed' ? 'completed' : execution.status === 'cancelled' ? 'cancelled' : 'failed');
+      }
     }
 
     return execution;
@@ -174,6 +247,7 @@ export class WorkflowOrchestrator {
     workflow: WorkflowOrchestratorInput,
     execution: WorkflowExecutionResult,
     signal?: AbortSignal,
+    runCtx: { store?: RunStore; resumed?: Set<string>; unknowns?: Set<string>; retryUnknown?: boolean } = {},
   ): Promise<void> {
     const stepResult: WorkflowStepResult = {
       stepId: step.id,
@@ -185,6 +259,34 @@ export class WorkflowOrchestrator {
     };
 
     execution.steps.push(stepResult);
+
+    // P0-B2 resume: restore the previously recorded result, skip execution.
+    if (runCtx.resumed?.has(step.id) && runCtx.store) {
+      const saved = runCtx.store.getRun(execution.workflowId)?.steps.find(s => s.step_id === step.id);
+      stepResult.status = 'completed';
+      try { stepResult.result = saved?.result ? JSON.parse(saved.result) : { resumed: true }; }
+      catch { stepResult.result = { resumed: true }; }
+      stepResult.completedAt = new Date().toISOString();
+      return;
+    }
+
+    // P0-B3: unknown outcome (orphaned running / expired handle) is NOT
+    // failure. Only re-run when the step declares idempotent:true or the
+    // operator explicitly passed retryUnknown:true. Otherwise report and
+    // stop without a blind replay of a possibly-completed side effect.
+    if (runCtx.unknowns?.has(step.id) && runCtx.store) {
+      const replayable = (step as { idempotent?: boolean }).idempotent === true || runCtx.retryUnknown === true;
+      if (!replayable) {
+        stepResult.status = 'failed';
+        stepResult.error = `unknown outcome for step '${step.id}': prior attempt orphaned; explicit retry required (mark idempotent:true or resume with retryUnknown:true)`;
+        stepResult.completedAt = new Date().toISOString();
+        runCtx.store.recordEvent(execution.workflowId, 'unknown_blocked', { step_id: step.id });
+        if (workflow.failFast) throw new Error(stepResult.error);
+        return;
+      }
+      runCtx.store.recordEvent(execution.workflowId, 'unknown_retry', { step_id: step.id, idempotent: (step as { idempotent?: boolean }).idempotent === true });
+    }
+
     const maxAttempts = 1 + (step.retryOnFailure ? (step.maxRetries ?? 1) : 0);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -199,6 +301,7 @@ export class WorkflowOrchestrator {
         // Resolve parameters with variable substitution and output mapping
         const resolvedParams = this.resolveParameters(step, execution.steps, workflow.variables);
 
+        if (runCtx.store) runCtx.store.startStep(execution.workflowId, step.id, step.serverName, step.toolName, resolvedParams);
         const result = await this.callMCPServerTool(step.serverName, step.toolName, resolvedParams, signal);
 
         stepResult.status = 'completed';
@@ -208,6 +311,10 @@ export class WorkflowOrchestrator {
         stepResult.executionTime = stepResult.completedAt && stepResult.startedAt
           ? new Date(stepResult.completedAt).getTime() - new Date(stepResult.startedAt).getTime()
           : 0;
+        if (runCtx.store) {
+          runCtx.store.saveStepResult(execution.workflowId, step.id, result);
+          runCtx.store.finishStep(execution.workflowId, step.id, 'completed', 'ok');
+        }
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
@@ -216,6 +323,7 @@ export class WorkflowOrchestrator {
           stepResult.status = 'failed';
           stepResult.error = message;
           stepResult.completedAt = new Date().toISOString();
+          if (runCtx.store) runCtx.store.finishStep(execution.workflowId, step.id, 'failed', message);
           // If failFast is enabled, stop the entire workflow
           if (workflow.failFast) throw error;
           return;

@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { createServer } from 'node:net';
 import { bundledEnginePath } from './diagnostics.js';
@@ -31,6 +32,76 @@ export function needleConfigFromEnv(): NeedleConfig {
     servePort: parseInt(process.env.NEEDLE_PORT || '18080', 10),
     useServer: (process.env.NEEDLE_USE_SERVER || 'true').toLowerCase() !== 'false',
   };
+}
+
+/**
+ * P0-B5: stable ToolDescriptor fingerprint. Cache key covers the full
+ * callable surface — server identity + version + protocol + tool name +
+ * schema + description — so a description edit or schema drift can never
+ * silently reuse a stale tool index.
+ */
+export function fingerprintTools(
+  tools: Array<{ name: string; description?: string; parameters?: unknown; schema?: unknown }>,
+  opts: { serverId?: string; serverVersion?: string; protocolVersion?: string } = {},
+): string {
+  const canonical = [...tools]
+    .map(t => ({
+      name: t.name,
+      description: t.description || '',
+      schema: (t.parameters ?? t.schema ?? {}) as unknown,
+    }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const payload = JSON.stringify({
+    server: opts.serverId || 'local',
+    serverVersion: opts.serverVersion || '',
+    protocol: opts.protocolVersion || '',
+    tools: canonical,
+  });
+  return createHash('sha256').update(payload).digest('hex').slice(0, 32);
+}
+
+/**
+ * P0-B5: per-family confidence thresholds. The old global 0.6 under-gates
+ * privileged families (shell, device control) and over-gates pure
+ * observation. Effective threshold for a decision = strictest (max) of the
+ * involved families. Override any family via HELA_NEEDLE_THRESHOLD_<FAMILY>
+ * (0..1), e.g. HELA_NEEDLE_THRESHOLD_SHELL=0.8.
+ */
+export const NEEDLE_FAMILY_THRESHOLDS: Record<string, number> = {
+  shell: 0.75, terminal: 0.75,
+  browser_act: 0.7, android_control: 0.75, blender: 0.7,
+  filesystem_write: 0.65, destructive: 0.8,
+  research: 0.5, filesystem_read: 0.5, observe: 0.5, project_query: 0.5,
+  design: 0.55, default: 0.6,
+};
+
+export function needleFamilyOf(toolName: string): string {
+  const n = toolName.toLowerCase();
+  if (/shell|execute_command|terminal|pty|session_(spawn|write)|agent_spawn/.test(n)) return 'shell';
+  if (/shell_exec|reboot|push|install|uninstall/.test(n)) return 'android_control';
+  if (/browser_.*(click|type|press|drag|upload|navigate)|screenshot|record/.test(n)) return 'browser_act';
+  if (/blender|execute_blender|render_output/.test(n)) return 'blender';
+  if (/delete|destroy|prune|close|kill|uninstall/.test(n)) return 'destructive';
+  if (/write|create|update|move|copy|archive|import/.test(n)) return 'filesystem_write';
+  if (/search|query|read|list|get|observe|extract|fetch|summary/.test(n)) return 'research';
+  if (/design|palette|template|tokens|component/.test(n)) return 'design';
+  return 'default';
+}
+
+export function resolveFamilyThreshold(family: string, globalDefault = 0.6): number {
+  const envKey = `HELA_NEEDLE_THRESHOLD_${family.toUpperCase()}`;
+  const raw = process.env[envKey];
+  if (raw !== undefined) {
+    const v = Number(raw);
+    if (Number.isFinite(v) && v >= 0 && v <= 1) return v;
+  }
+  return NEEDLE_FAMILY_THRESHOLDS[family] ?? globalDefault;
+}
+
+/** Strictest threshold across all tools involved in one routing decision. */
+export function resolveThresholdForTools(toolNames: string[], globalDefault = 0.6): number {
+  if (toolNames.length === 0) return globalDefault;
+  return Math.max(...toolNames.map(t => resolveFamilyThreshold(needleFamilyOf(t), globalDefault)));
 }
 
 function fail(code: string, msg: string, retryable = false): never {
@@ -121,9 +192,21 @@ export class NeedleProvider implements ModelProvider {
     return c === null ? true : c >= this.config.confidenceThreshold;
   }
 
+  /**
+   * P0-B5: family-aware gate. Pass the candidate tool names from the parsed
+   * decision when known; falls back to the global threshold for empty sets.
+   */
+  isConfidentFor(rawText: string, toolNames: string[] = []): boolean {
+    const c = this.confidenceOf(rawText);
+    if (c === null) return true;
+    return c >= resolveThresholdForTools(toolNames, this.config.confidenceThreshold);
+  }
+
   /** Persistent `--serve` mode: one engine process per toolset, HTTP loopback. */
   private async ensureServer(tools: unknown[]): Promise<void> {
-    const hash = JSON.stringify(tools).length + ':' + (tools as Array<{ name: string }>).map(t => t.name).join(',');
+    // P0-B5: fingerprint over name+schema+description (not length:name) so
+    // stale indexes from edited descriptions can never be reused.
+    const hash = fingerprintTools(tools as Array<{ name: string; description?: string; parameters?: unknown }>);
     if (this.server && !this.server.killed && this.serverToolsHash === hash && this.activePort) {
       try { await this.postJson('/reset', {}); return; } catch { /* stale — respawn below */ }
     }
