@@ -17,13 +17,30 @@ export interface NeedleConfig {
   toolIndexPath?: string;
   servePort: number;
   useServer: boolean;
+  /** '3' (default) or '2'. v3 engine requires --model; v2 has baked weights. */
+  generation: '2' | '3';
+  /** Ladder depth 2..20 for v3 (NEEDLE_DEPTH); undefined = full model. */
+  depth?: number;
+}
+
+/** Env forced on every engine spawn: v3 binaries phone home by default. */
+export const NEEDLE_NO_TELEMETRY_ENV = { NEEDLE_TELEMETRY: '0', DO_NOT_TRACK: '1' } as const;
+
+export function needleDefaultsForGeneration(gen: '2' | '3'): { enginePath: string; modelPath: string } {
+  return gen === '3'
+    ? { enginePath: 'assets/needle/needle3', modelPath: 'assets/needle/needle3.cact' }
+    : { enginePath: bundledEnginePath(), modelPath: 'assets/needle/needle2.cact' };
 }
 
 export function needleConfigFromEnv(): NeedleConfig {
+  const generation = process.env.NEEDLE_GENERATION === '2' ? '2' : '3';
+  const defaults = needleDefaultsForGeneration(generation);
+  const depthRaw = process.env.NEEDLE_DEPTH;
+  const depth = depthRaw !== undefined ? Number(depthRaw) : undefined;
   return {
     enabled: (process.env.MITOSIS_AGENT_ENABLED || 'true').toLowerCase() !== 'false',
-    enginePath: bundledEnginePath(),
-    modelPath: process.env.NEEDLE_MODEL_PATH || 'assets/needle/needle2.cact',
+    enginePath: process.env.NEEDLE_ENGINE_PATH || defaults.enginePath,
+    modelPath: process.env.NEEDLE_MODEL_PATH || defaults.modelPath,
     confidenceThreshold: parseFloat(process.env.NEEDLE_CONFIDENCE_THRESHOLD || '0.6'),
     timeoutMs: parseInt(process.env.NEEDLE_TIMEOUT_MS || '15000', 10),
     // Persisted tool-embedding cache: the engine keys it by a fingerprint over
@@ -31,6 +48,8 @@ export function needleConfigFromEnv(): NeedleConfig {
     toolIndexPath: process.env.NEEDLE_TOOL_INDEX_PATH || 'assets/needle/tools.idx',
     servePort: parseInt(process.env.NEEDLE_PORT || '18080', 10),
     useServer: (process.env.NEEDLE_USE_SERVER || 'true').toLowerCase() !== 'false',
+    generation,
+    depth: depth !== undefined && Number.isFinite(depth) && depth >= 2 ? Math.floor(depth) : undefined,
   };
 }
 
@@ -111,11 +130,12 @@ function fail(code: string, msg: string, retryable = false): never {
 }
 
 /**
- * Needle 2 provider: spawns the bundled CLI one-shot
- * (`needle --tools tools.json --prompt "..."`), parses the JSON
- * `{type,function_calls,confidence,reasoning}` contract.
- * Weights are baked into the engine; NEEDLE_MODEL_PATH selects a tuned
- * `.cact` when present (passed via --weights if the CLI supports it).
+ * Needle provider: spawns the bundled CLI one-shot
+ * (`needle --model weights.cact --tools tools.json --prompt "..."`), parses
+ * the JSON `{type:function_calls,confidence,reasoning}` contract.
+ * Gen 3 (default, NEEDLE_GENERATION=3): external .cact via --model, --depth
+ * ladder, telemetry force-disabled. Gen 2 (NEEDLE_GENERATION=2): baked
+ * weights, no --model flag.
  */
 export class NeedleProvider implements ModelProvider {
   private server?: ChildProcess;
@@ -125,20 +145,33 @@ export class NeedleProvider implements ModelProvider {
   constructor(private config: NeedleConfig = needleConfigFromEnv()) {}
 
   metadata(): ProviderMetadata {
-    return { name: 'needle', kind: 'local', model: this.config.modelPath || 'needle-2 (baked)', capabilities: ['tool-call', 'extract', 'confidence-gated'] };
+    return { name: 'needle', kind: 'local', model: this.config.modelPath || `needle-${this.config.generation} (baked)`, capabilities: ['tool-call', 'extract', 'confidence-gated'] };
+  }
+
+  /** v3-only flags: --model (required, weights not baked) + --depth ladder. */
+  private modelArgs(): string[] {
+    if (this.config.generation !== '3') return [];
+    const args = ['--model', this.config.modelPath];
+    if (this.config.depth !== undefined) args.push('--depth', String(this.config.depth));
+    return args;
+  }
+
+  /** Every engine spawn inherits a telemetry-free environment. */
+  private spawnEnv(): NodeJS.ProcessEnv {
+    return { ...process.env, ...NEEDLE_NO_TELEMETRY_ENV };
   }
 
   async health(): Promise<{ ok: boolean; detail?: string }> {
     if (!this.config.enabled) return { ok: false, detail: 'MITOSIS_AGENT_ENABLED == false' };
     if (!existsSync(this.config.enginePath)) return { ok: false, detail: `engine missing: ${this.config.enginePath} (run npm run needle:fetch)` };
-    // Tuned-model note: the CLI bakes in the base model (no --weights flag);
-    // NEEDLE_MODEL_PATH is reserved for a future engine/libneedle path that
-    // loads .cact archives. Presence is reported, never loaded, by this provider.
-    const modelNote = existsSync(this.config.modelPath)
-      ? `model file present (${this.config.modelPath})`
+    // Tuned-model note: gen-3 engines take --model explicitly (weights are
+    // not baked in); gen-2 bakes the base model in. NEEDLE_MODEL_PATH /
+    // NEEDLE_ENGINE_PATH overrides always win over generation defaults.
+    const modelNote = this.config.generation === '3' || existsSync(this.config.modelPath)
+      ? `model file ${existsSync(this.config.modelPath) ? 'present' : 'MISSING'} (${this.config.modelPath})`
       : `model file absent (${this.config.modelPath}); using baked base model`;
     return new Promise((resolve) => {
-      execFile(this.config.enginePath, ['--help'], { timeout: 5000 }, (err, stdout) => {
+      execFile(this.config.enginePath, ['--help'], { timeout: 5000, env: this.spawnEnv() }, (err, stdout) => {
         resolve(err
           ? { ok: false, detail: String(err.message).slice(0, 160) }
           : { ok: true, detail: `${String(stdout).slice(0, 100)} | ${modelNote}` });
@@ -153,7 +186,7 @@ export class NeedleProvider implements ModelProvider {
     if (this.config.useServer) {
       await this.ensureServer(tools);
       const parsed = await this.postJson('/complete', { input: req.systemPrompt ? `${req.systemPrompt}\n\n${req.prompt}` : req.prompt });
-      return { text: JSON.stringify(parsed), modelUsed: `needle2:server:${this.activePort}`, latencyMs: Date.now() - t0 };
+      return { text: JSON.stringify(parsed), modelUsed: `needle${this.config.generation}:server:${this.activePort}`, latencyMs: Date.now() - t0 };
     }
     return this.generateOneShot(tools, req, t0);
   }
@@ -161,17 +194,17 @@ export class NeedleProvider implements ModelProvider {
   private async generateOneShot(tools: unknown[], req: ModelRequest, t0: number): Promise<ModelResponse> {
     const toolsFile = join(tmpdir(), `needle-tools-${Date.now()}-${Math.floor(Math.random() * 1e6)}.json`);
     writeFileSync(toolsFile, JSON.stringify(tools));
-    const args = ['--tools', toolsFile, '--prompt', req.prompt];
+    const args = [...this.modelArgs(), '--tools', toolsFile, '--prompt', req.prompt];
     if (this.config.toolIndexPath) args.push('--tool-index', this.config.toolIndexPath);
     try {
       const stdout = await new Promise<string>((resolve, reject) => {
-        execFile(this.config.enginePath, args, { timeout: req.timeoutMs || this.config.timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (err, out, stderr) => {
+        execFile(this.config.enginePath, args, { timeout: req.timeoutMs || this.config.timeoutMs, maxBuffer: 4 * 1024 * 1024, env: this.spawnEnv() }, (err, out, stderr) => {
           if (err) reject(Object.assign(new Error(`needle exec failed: ${String(stderr || err.message).slice(0, 300)}`), { code: 'code' in err ? err.code : undefined }));
           else resolve(String(out));
         });
       });
       const parsed = JSON.parse(stdout.trim().split('\n').filter(Boolean).pop() as string);
-      return { text: JSON.stringify(parsed), modelUsed: `needle2@${this.config.enginePath}`, latencyMs: Date.now() - t0 };
+      return { text: JSON.stringify(parsed), modelUsed: `needle${this.config.generation}@${this.config.enginePath}`, latencyMs: Date.now() - t0 };
     } catch (e) {
       if (e instanceof SyntaxError) fail('MALFORMED_OUTPUT', 'needle returned non-JSON output', true);
       const msg = e instanceof Error ? e.message : String(e);
@@ -215,9 +248,9 @@ export class NeedleProvider implements ModelProvider {
     this.activePort = await pickFreePort(this.config.servePort);
     this.toolsFile = join(tmpdir(), `needle-tools-${Date.now()}-${process.pid}-${Math.floor(Math.random() * 1e6)}.json`);
     writeFileSync(this.toolsFile, JSON.stringify(tools));
-    const args = ['--tools', this.toolsFile, '--serve', '--port', String(this.activePort)];
+    const args = [...this.modelArgs(), '--tools', this.toolsFile, '--serve', '--port', String(this.activePort)];
     if (this.config.toolIndexPath) args.push('--tool-index', this.config.toolIndexPath);
-    this.server = spawn(this.config.enginePath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    this.server = spawn(this.config.enginePath, args, { stdio: ['ignore', 'pipe', 'pipe'], env: this.spawnEnv() });
     this.serverToolsHash = hash;
     for (let i = 0; i < 40; i++) {
       if (this.server.killed || this.server.exitCode !== null) throw new Error('needle server exited during startup');

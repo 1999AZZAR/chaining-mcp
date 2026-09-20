@@ -61,7 +61,8 @@ Escalation provider is **auto-detected** from the environment (`OPENROUTER_API_K
 - **Stochastic variance.** Identical prompts can score 0.97 → 0.005 confidence across runs and occasionally refuse outright. Every mitigation (retry-tolerant planner, saturation guard, escalation budget, honest failures) exists because we hit this live. Plan for retries; never assume a deterministic answer.
 - **Measured planning quality (20-task battery × 3 runs):** 18/20 fully valid, mean expected-tool recall 0.825, mean ~1.3s/plan. **Known weak phrasing:** vague commands refuse ("turn off all the lights", "check disk usage"); 3 two-tool tasks produced partial chains. Sharper phrasing ("dim the living room lights to 30") scores 1.0. Tool *descriptions* in discovery drive recall more than the model size does.
 - **Session state is in-memory.** AgentState and workflows are lost on restart. The persistent `memory.db` knowledge graph is a separate system, not yet fused with agent sessions.
-- **Tuned `.cact` models are not loadable yet.** The current CLI has no `--weights` flag, so `NEEDLE_MODEL_PATH` is reported by health checks and reserved for a future libneedle path. The bundled base model is what runs.
+- **Needle 3 is the default router (Sept 2026).** 121M laddered model, 29MB file, ~78MB RAM. Measured here: Mobile Actions-style single calls at confidence 1.0, calibrated uncertainty on vague prompts (0.41 research → escalates under the 0.5 family floor), empty-list refusal instead of guesses. `NEEDLE_GENERATION=2` restores the legacy 45M engine. Caveats carry over: stochastic variance, vague commands refuse, descriptions drive recall more than model size.
+- **Tuned `.cact` models load via `--model` on gen 3.** `NEEDLE_MODEL_PATH` is honored by the v3 engine (weights are no longer baked in). Telemetry is force-disabled on every engine spawn (`NEEDLE_TELEMETRY=0`, `DO_NOT_TRACK=1`).
 - **Skills are discoverable, retrievable, and recommended — not executed.** A skill is instructions (SKILL.md); running its scripts is the harness's job. `suggest_skill_chain` attaches deterministic per-step skill hints, labeled as such (the model doesn't fuse them).
 - **`brainstorming` needs a generative model.** Without `OPENROUTER_API_KEY` it fails honestly — we removed template ideas with random scores rather than fake them.
 - **OpenRouter escalation only works with a key — auto-detected.** Without `OPENROUTER_API_KEY`/`OPENAI_API_KEY`, Mitosis detects the absence and hands control to the calling agent (`handoff: true`) instead of attempting a doomed call.
@@ -153,8 +154,10 @@ LLM: `llm_query`, `llm_decompose_task` (Needle-planned), `llm_suggest_route` (Ne
 |----------|---------|---------|
 | `CHAINING_TOOL_TIMEOUT_MS` | `10000` | Interactive tool timeout; model-backed tools (`agent_run`, `brainstorming`, `analyze_with_sequential_thinking`, `suggest_skill_chain`, agent-fronted `sequentialthinking`) use their own budget instead (cap 300s) |
 | `MITOSIS_AGENT_ENABLED` | *auto* | On when `assets/needle/needle` exists; `false` opts out |
-| `NEEDLE_ENGINE_PATH` | `assets/needle/needle` | Engine location override |
-| `NEEDLE_MODEL_PATH` | `assets/needle/needle2.cact` | Reserved (CLI runs baked base; reported by health, not loadable yet) |
+| `NEEDLE_GENERATION` | `3` | Router generation: `3` (121M ladder, `--model` weights) or `2` (legacy 45M baked) |
+| `NEEDLE_DEPTH` | full | Gen-3 ladder rung 2..20 (e.g. `8` = 52M for small devices); invalid values fall back to full |
+| `NEEDLE_ENGINE_PATH` | `assets/needle/needle3` | Engine location override |
+| `NEEDLE_MODEL_PATH` | `assets/needle/needle3.cact` | Weights file (honored via `--model` on gen 3; gen 2 runs baked base) |
 | `NEEDLE_TOOL_INDEX_PATH` | `assets/needle/tools.idx` | Persisted tool-embedding cache (engine fingerprints by schema+model) |
 | `NEEDLE_CONFIDENCE_THRESHOLD` | `0.6` | Act at/above, escalate below |
 | `NEEDLE_PORT` / `NEEDLE_USE_SERVER` | `18080` / `true` | Serve-mode port + toggle (`false` = one-shot spawn) |
