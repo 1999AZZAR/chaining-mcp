@@ -45,8 +45,8 @@ export const HELA_CAPABILITIES: HelaCapability[] = [
   {
     name: 'terminal.execute',
     description: 'Run shell commands, sessions, transfers (R3 privileged)',
-    servers: ['terminal', 'nucleus'],
-    toolPatterns: ['execute_command', 'terminal_', 'transfer', 'pty', 'session_'],
+    servers: ['terminal', 'nucleus', 'menager', 'ribosome'],
+    toolPatterns: ['execute_command', 'terminal_', 'transfer', 'pty', 'session_', 'opencode_'],
     keywords: ['run', 'running', 'execute', 'shell', 'command', 'terminal', 'script', 'pytest', 'npm', 'build', 'deploy', 'ssh'],
   },
   {

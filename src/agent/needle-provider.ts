@@ -15,6 +15,7 @@ export interface NeedleConfig {
   confidenceThreshold: number;
   timeoutMs: number;
   toolIndexPath?: string;
+  systemPath?: string;
   servePort: number;
   useServer: boolean;
   /** '3' (default) or '2'. v3 engine requires --model; v2 has baked weights. */
@@ -46,6 +47,7 @@ export function needleConfigFromEnv(): NeedleConfig {
     // Persisted tool-embedding cache: the engine keys it by a fingerprint over
     // the schemas + model, so one path safely serves many toolsets and restarts.
     toolIndexPath: process.env.NEEDLE_TOOL_INDEX_PATH || 'assets/needle/tools.idx',
+    systemPath: process.env.NEEDLE_SYSTEM_PATH || (existsSync('assets/needle/hela-system.txt') ? 'assets/needle/hela-system.txt' : undefined),
     servePort: parseInt(process.env.NEEDLE_PORT || '18080', 10),
     useServer: (process.env.NEEDLE_USE_SERVER || 'true').toLowerCase() !== 'false',
     generation,
@@ -196,6 +198,14 @@ export class NeedleProvider implements ModelProvider {
     writeFileSync(toolsFile, JSON.stringify(tools));
     const args = [...this.modelArgs(), '--tools', toolsFile, '--prompt', req.prompt];
     if (this.config.toolIndexPath) args.push('--tool-index', this.config.toolIndexPath);
+    let tempSystemFile: string | undefined;
+    if (req.systemPrompt) {
+      tempSystemFile = join(tmpdir(), `needle-sys-${Date.now()}-${Math.floor(Math.random() * 1e6)}.txt`);
+      writeFileSync(tempSystemFile, req.systemPrompt);
+      args.push('--system', tempSystemFile);
+    } else if (this.config.systemPath && existsSync(this.config.systemPath)) {
+      args.push('--system', this.config.systemPath);
+    }
     try {
       const stdout = await new Promise<string>((resolve, reject) => {
         execFile(this.config.enginePath, args, { timeout: req.timeoutMs || this.config.timeoutMs, maxBuffer: 4 * 1024 * 1024, env: this.spawnEnv() }, (err, out, stderr) => {
@@ -212,6 +222,9 @@ export class NeedleProvider implements ModelProvider {
       throw new Error('unreachable');
     } finally {
       try { unlinkSync(toolsFile); } catch { /* best effort */ }
+      if (tempSystemFile) {
+        try { unlinkSync(tempSystemFile); } catch { /* best effort */ }
+      }
     }
   }
 

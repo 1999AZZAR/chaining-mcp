@@ -1,6 +1,7 @@
 import { AgentDecisionSchema, AgentPlanSchema, type AgentDecision, type AgentPlan, type ModelProvider, type ModelRequest } from './schemas.js';
 import { NeedleProvider } from './needle-provider.js';
 import { scopeToolsForTask } from './capability-graph.js';
+import { recallEpisodicMemory, retainWorkflowDecision } from './episodic-retention.js';
 import { OpenRouterProvider } from './openrouter-provider.js';
 import type { AgentStateManager, TerminationReason } from './state.js';
 import { sharedAgentState } from './state.js';
@@ -113,7 +114,8 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const needleApi: Pick<NeedleProvider, 'isConfident' | 'confidenceOf' | 'resetConversation' | 'stopServer'> | null = needle;
   const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
   // P1-C4: capability-first scope (falls back to full catalog on no signal).
-  const scope = input.capabilityRouting ? scopeToolsForTask(input.toolSchemas, input.task) : null;
+  const enableCapRouting = input.capabilityRouting ?? (process.env['HELA_CAPABILITY_ROUTING'] !== 'false');
+  const scope = enableCapRouting ? scopeToolsForTask(input.toolSchemas, input.task) : null;
   const toolSchemas = scope && scope.scoped ? scope.tools : input.toolSchemas;
   const knownTools = new Set(toolSchemas.map(t => t.name));
   const history: unknown[] = [];
@@ -181,7 +183,12 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
       typeof h === 'object' && h !== null && 'tool' in h && 'result' in h);
     const prompt = (isPrimary(provider) && lastResult)
       ? `Result of ${String((lastResult as { tool: unknown }).tool)}: ${compact((lastResult as { result: unknown }).result, 400)}\nTask reminder: ${compact(input.task, 200)}`
-      : buildObservation(input.task, toolSchemas, history, history.length ? undefined : input.guidance);
+      : buildObservation(
+          input.task,
+          toolSchemas,
+          history,
+          history.length ? undefined : [input.guidance, recallEpisodicMemory(input.task)].filter(Boolean).join('\n') || undefined
+        );
     const req: ModelRequest = {
       prompt,
       systemPrompt: 'You are Mitosis agent runtime. Output exactly one JSON AgentDecision, no prose: {"action":"call_tool","tool":"...","args":{}} or {"action":"complete","result":...} or {"action":"escalate","reason":"..."} or {"action":"revise","note":"..."}.',
@@ -235,7 +242,14 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     }
 
     rec({ kind: 'decision', decision });
-    if (decision.action === 'complete') { end(esc.escalated ? 'escalated' : 'completed'); return { decision, toolCalls, iterations: i, escalated: esc.escalated, sessionId: session?.id, escalations: esc.trail }; }
+    if (decision.action === 'complete') {
+      end(esc.escalated ? 'escalated' : 'completed');
+      const calledTools = history.filter((h: any) => h && h.tool).map((h: any) => String(h.tool));
+      if (calledTools.length > 0) {
+        retainWorkflowDecision(input.task, calledTools, 'completed agent run');
+      }
+      return { decision, toolCalls, iterations: i, escalated: esc.escalated, sessionId: session?.id, escalations: esc.trail };
+    }
     if (decision.action === 'escalate') {
       const trigger: EscalationTrigger = /refus/i.test(decision.reason) ? 'refusal'
         : /confidence/i.test(decision.reason) ? 'low_confidence'
@@ -348,7 +362,8 @@ export async function agentStep(input: AgentStepInput): Promise<{
   const primary: ModelProvider = input.providers?.primary ?? new NeedleProvider();
   const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
   const needleApi: NeedleApi = primary instanceof NeedleProvider ? primary : null;
-  const stepScope = input.capabilityRouting ? scopeToolsForTask(input.tools, input.task) : null;
+  const enableStepCapRouting = input.capabilityRouting ?? (process.env['HELA_CAPABILITY_ROUTING'] !== 'false');
+  const stepScope = enableStepCapRouting ? scopeToolsForTask(input.tools, input.task) : null;
   const stepTools = stepScope && stepScope.scoped ? stepScope.tools : input.tools;
   const knownTools = new Set(stepTools.map(t => t.name));
   const tail = manager.tail(session.id, 6);
@@ -497,7 +512,9 @@ async function planIterative(
     // falling back to OpenRouter.
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const prompt = guidance ? `${task.slice(0, 500)}\n\nGuidance:\n${guidance}` : task.slice(0, 500);
+        const episodic = recallEpisodicMemory(task);
+        const combined = [guidance, episodic].filter(Boolean).join('\n') || undefined;
+        const prompt = combined ? `${task.slice(0, 500)}\n\nGuidance:\n${combined}` : task.slice(0, 500);
         const res = await needle.generate({ prompt, signal, tools });
         const native = JSON.parse(res.text);
         const calls = (native.function_calls || []).filter((c: { name: string }) => known.has(c.name)).slice(0, maxSteps);
