@@ -2,11 +2,11 @@
 
 > **Part of the [HeLa MCP Ecosystem](https://github.com/1999AZZAR/hela-mcp-ecosystem)** — this server is **HeLa Mitosis (`hela-mitosis`)**, the *Orchestrator* component of the HeLa cellular architecture.
 
-A Model Context Protocol (MCP) server that orchestrates other MCP servers: discovers tools, plans execution with a **bundled local tool-calling model (Needle 2)**, executes through a registry-guarded workflow engine, records reasoning in an agent-state store, and escalates to OpenRouter only when the local model is not confident. Also ships time management, prompt/resource libraries, skills-catalog management, memory graph, monitoring, and security guidance.
+A Model Context Protocol (MCP) server that orchestrates other MCP servers: discovers tools, plans execution with a **bundled local tool-calling model (Needle 3)**, executes through a registry-guarded workflow engine, records reasoning in an agent-state store, and escalates to OpenRouter only when the local model is not confident. Also ships time management, prompt/resource libraries, skills-catalog management, memory graph, monitoring, and security guidance.
 
 ---
 
-## Agent Runtime (Needle 2, bundled) — how it actually works
+## Agent Runtime (Needle 3, bundled) — how it actually works
 
 ![Blotcat sitting cross-legged, branching thought bubbles emerging from its head](assets/chaining-illustrations/03-sequential.jpg)
 
@@ -14,7 +14,7 @@ A Model Context Protocol (MCP) server that orchestrates other MCP servers: disco
 User
  ↓
 Mitosis
- ├─ Needle 2 (bundled 45M tool-calling engine, auto-enabled when present)
+ ├─ Needle 3 (bundled 121M tool-calling engine, auto-enabled when present)
  │    ↓ structured decision (JSON, grammar-constrained to real tools)
  ├─ state / observation (AgentState: observations, decisions, tool
  │    calls, results, revisions, branches, escalation, termination)
@@ -24,13 +24,13 @@ Mitosis
  │    ↓
  └─ MCP capabilities (tools + skills + prebuilt prompts)
       ↓ result
-   Needle 2 → next decision (…until complete / escalate / limits)
+   Needle 3 → next decision (…until complete / escalate / limits)
 ```
 
 **Sequential thinking is built in — there is no external sequential-thinking MCP.** `sequentialthinking`, `analyze_with_sequential_thinking`, and `agent_run` all resolve to this one loop on the MCP layer:
 
 ```
-Needle 2 (local)
+Needle 3 (local)
   │  refusal / low-confidence / malformed output / provider failure
   ▼
 OpenRouter (escalation layer, auto-detected, budgeted one-way trip, recorded trail)
@@ -57,16 +57,25 @@ Escalation provider is **auto-detected** from the environment (`OPENROUTER_API_K
 
 ### Honest limitations (read before relying on it)
 
-- **Small model ceiling.** Needle 2 is a 45M *tool-calling* model, not a general reasoner. Multi-hop reasoning, open-ended prose, and creative writing are NOT its job — those are exactly when the escalation layer should fire. Planning is a router: it picks tools and fills args, it does not argue.
+- **Small model ceiling.** Needle 3 is a 121M *tool-calling* model (with legacy 45M Needle 2 selectable via `NEEDLE_GENERATION=2`), not a general reasoner. Multi-hop reasoning, open-ended prose, and creative writing are NOT its job — those are exactly when the escalation layer should fire. Planning is a router: it picks tools and fills args, it does not argue.
 - **Stochastic variance.** Identical prompts can score 0.97 → 0.005 confidence across runs and occasionally refuse outright. Every mitigation (retry-tolerant planner, saturation guard, escalation budget, honest failures) exists because we hit this live. Plan for retries; never assume a deterministic answer.
 - **Measured planning quality (20-task battery × 3 runs):** 18/20 fully valid, mean expected-tool recall 0.825, mean ~1.3s/plan. **Known weak phrasing:** vague commands refuse ("turn off all the lights", "check disk usage"); 3 two-tool tasks produced partial chains. Sharper phrasing ("dim the living room lights to 30") scores 1.0. Tool *descriptions* in discovery drive recall more than the model size does.
 - **Episodic memory & retention with anti-stagnation gates (Oct 2026).** Agent planning and turn-1 decisions query `memory.db` (HeLa Genome) for relevant prior observations. To prevent workflow stagnation:
   1. *Pareto upgrade-only rule:* A workflow is only retained if it achieves the task in fewer/equal steps or without escalation. Longer, clunkier attempts can never overwrite concise workflows.
   2. *Dirty trail filtering:* Runs with repeated tool failures or errors (>2) are discarded before retention.
   3. *Reference framing:* Prior workflows are framed as hints (`prefer simpler direct tools if available`), enabling Needle 3 to discover single-tool shortcuts rather than being rigidly locked into multi-step historical patterns.
+
+  ![Blotcat operating a Pareto ratchet gate that lets lean 1-step plans pass while blocking clunky multi-step runs](assets/chaining-illustrations/07-episodic-ratchet.jpg)
+
 - **Profile-Aware System Grounding (`assets/needle/profiles/`).** Needle 3 dynamically resolves its grounding card based on `HELA_PROFILE` (e.g. `dev-workspace`, `headless-server`, `research`, `web-devops`, `android-testing`, `3d-modeling`, `all`), or defaults to `assets/needle/hela-system.txt`. The model is immediately aware of which organelles and tools are active for that persona, preventing out-of-profile routing attempts.
+
+  ![Blotcat inserting a profile cartridge to awaken only matching organelle bulbs](assets/chaining-illustrations/06-profile-grounding.jpg)
+
 - **Permanent System Grounding Cards in Git.** All system cards (`assets/needle/hela-system.txt` and `assets/needle/profiles/*.txt`) are checked into git, ensuring zero-configuration grounding immediately upon repository clone.
 - **Default capability-first two-tier scoping.** `scopeToolsForTask` scopes the full 200+ tool ecosystem to task-relevant organelle capabilities first, preventing context overflow in the 121M model while keeping decisions accurate and calibrated.
+
+  ![Blotcat filtering 342 tools through a mesh sieve into a tidy tray for Needle 3](assets/chaining-illustrations/05-two-tier-scoping.jpg)
+
 - **Needle 3 is the default router (Sept 2026).** 121M laddered model, 29MB file, ~78MB RAM. Measured here: Mobile Actions-style single calls at confidence 1.0, calibrated uncertainty on vague prompts (0.41 research → escalates under the 0.5 family floor), empty-list refusal instead of guesses. `NEEDLE_GENERATION=2` restores the legacy 45M engine. Caveats carry over: stochastic variance, vague commands refuse, descriptions drive recall more than model size.
 - **Tuned `.cact` models load via `--model` on gen 3.** `NEEDLE_MODEL_PATH` is honored by the v3 engine (weights are no longer baked in). Telemetry is force-disabled on every engine spawn (`NEEDLE_TELEMETRY=0`, `DO_NOT_TRACK=1`).
 - **Skills are discoverable, retrievable, and recommended — not executed.** A skill is instructions (SKILL.md); running its scripts is the harness's job. `suggest_skill_chain` attaches deterministic per-step skill hints, labeled as such (the model doesn't fuse them).
@@ -104,7 +113,7 @@ development-starter-kit, debugging-toolbox, performance-optimization-kit, tool-c
 ## Installation
 
 ```bash
-npm install            # automatically fetches the bundled Needle 2 engine if missing
+npm install            # automatically fetches the bundled Needle 3 engine if missing
 npm run build          # prebuild also ensures the engine; tsc compiles
 npm run needle:fetch   # manual re-fetch / platform override (only needed if auto-fetch failed)
 ```
