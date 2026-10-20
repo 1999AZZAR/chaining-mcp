@@ -102,7 +102,7 @@ export function recallEpisodicMemory(task: string, config: EpisodicMemoryConfig 
     db.close();
 
     if (hits.length === 0) return '';
-    let out = hits.map(h => `- memory: ${h}`).join('\n');
+    let out = hits.map(h => `- prior_reference: ${h} (prefer simpler direct tools if available)`).join('\n');
     if (out.length > maxChars) out = out.slice(0, maxChars) + '…';
     return out;
   } catch {
@@ -114,20 +114,49 @@ export function recallEpisodicMemory(task: string, config: EpisodicMemoryConfig 
  * Persist an executed successful tool decision or task workflow into memory.db
  * so future runs retain knowledge of what worked.
  */
+export interface RetainWorkflowOptions {
+  summary?: string;
+  escalated?: boolean;
+  errorCount?: number;
+}
+
+/**
+ * Persist an executed successful tool decision or task workflow into memory.db.
+ *
+ * Anti-Stagnation & Quality Gates:
+ * 1. Filter Out Dirty Runs: Discards runs with excessive tool errors or failures (> 2).
+ * 2. Pareto Efficiency / Upgrade-Only: If an existing workflow for this task pattern exists,
+ *    only upgrade/overwrite if the new workflow uses <= steps or resolves a previously escalated run.
+ *    Longer, less-efficient workflows are never allowed to overwrite lean ones.
+ */
 export function retainWorkflowDecision(
   task: string,
   toolChain: string[],
-  summary = 'auto-retained workflow'
+  options: RetainWorkflowOptions | string = {}
 ): boolean {
+  const opts: RetainWorkflowOptions = typeof options === 'string' ? { summary: options } : options;
   const dbPath = defaultMemoryDbPath();
   if (!dbPath) return false;
+
+  // Gate 1: Do not retain runs with multiple tool errors/retries (dirty trails)
+  if ((opts.errorCount ?? 0) > 2) {
+    return false;
+  }
+
+  // Gate 2: Do not retain empty chains
+  if (!toolChain || toolChain.length === 0) {
+    return false;
+  }
 
   try {
     const db = new DatabaseSync(dbPath);
     const now = new Date().toISOString();
     const cleanTask = task.trim().slice(0, 60).replace(/[^a-zA-Z0-9_-]+/g, '-').toLowerCase();
     const entityName = `workflow:${cleanTask}`;
-    const observation = `[${now}] tools: [${toolChain.join(', ')}] | note: ${summary}`;
+    const newSteps = toolChain.length;
+    const isEscalated = !!opts.escalated;
+    const summary = opts.summary || 'auto-retained workflow';
+    const observation = `[${now}] steps: ${newSteps} | escalated: ${isEscalated} | tools: [${toolChain.join(', ')}] | note: ${summary}`;
 
     const existing = db.prepare('SELECT rowid, observations FROM entities WHERE name = ?').get(entityName) as { rowid: number; observations: string } | undefined;
     if (existing) {
@@ -137,6 +166,28 @@ export function retainWorkflowDecision(
       } catch {
         obsList = [];
       }
+
+      // Gate 3: Pareto Efficiency check against the best recorded workflow
+      // Parse steps and escalation from previous observations
+      let bestSteps = Infinity;
+      let bestWasEscalated = true;
+      for (const obs of obsList) {
+        const match = obs.match(/steps:\s*(\d+)/);
+        if (match) {
+          const s = parseInt(match[1], 10);
+          if (s < bestSteps) bestSteps = s;
+        }
+        if (obs.includes('escalated: false')) {
+          bestWasEscalated = false;
+        }
+      }
+
+      // If existing was clean and had fewer steps, reject the suboptimal candidate
+      if (bestSteps < newSteps && !bestWasEscalated && isEscalated) {
+        db.close();
+        return false;
+      }
+
       obsList.push(observation);
       db.prepare('UPDATE entities SET observations = ?, updated_at = ? WHERE rowid = ?').run(
         JSON.stringify(obsList.slice(-10)),

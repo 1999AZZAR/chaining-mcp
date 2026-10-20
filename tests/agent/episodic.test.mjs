@@ -48,6 +48,36 @@ describe('Episodic memory & retention (P1-C5)', () => {
     const row = db.prepare('SELECT observations FROM entities WHERE name = ?').get('workflow:build-and-test-auth');
     assert.ok(row);
     assert.ok(row.observations.includes('read_file, execute_command'));
+    assert.ok(row.observations.includes('steps: 2'));
+    db.close();
+    delete process.env.HELA_MEMORY_DB_PATH;
+  });
+
+  test('retainWorkflowDecision anti-stagnation: rejects dirty run with errors', () => {
+    process.env.HELA_MEMORY_DB_PATH = testDb;
+    const ok = retainWorkflowDecision('dirty task', ['read_file'], { errorCount: 3 });
+    assert.equal(ok, false);
+    delete process.env.HELA_MEMORY_DB_PATH;
+  });
+
+  test('retainWorkflowDecision anti-stagnation: rejects worse/longer route over existing lean route', () => {
+    process.env.HELA_MEMORY_DB_PATH = testDb;
+    // Step 1: Record a clean 2-step route
+    const first = retainWorkflowDecision('optimize build', ['read_file', 'execute_command'], { escalated: false });
+    assert.equal(first, true);
+
+    // Step 2: An escalated longer 4-step route should be rejected
+    const worse = retainWorkflowDecision('optimize build', ['find_files', 'cat_file', 'read_file', 'execute_command'], { escalated: true });
+    assert.equal(worse, false);
+
+    // Step 3: A leaner 1-step route should be accepted
+    const better = retainWorkflowDecision('optimize build', ['get_file_context'], { escalated: false });
+    assert.equal(better, true);
+
+    const db = new DatabaseSync(testDb, { readOnly: true });
+    const row = db.prepare('SELECT observations FROM entities WHERE name = ?').get('workflow:optimize-build');
+    assert.ok(row);
+    assert.ok(row.observations.includes('steps: 1'));
     db.close();
     delete process.env.HELA_MEMORY_DB_PATH;
   });

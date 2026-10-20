@@ -244,9 +244,14 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
     rec({ kind: 'decision', decision });
     if (decision.action === 'complete') {
       end(esc.escalated ? 'escalated' : 'completed');
-      const calledTools = history.filter((h: any) => h && h.tool).map((h: any) => String(h.tool));
+      const calledTools = history.filter((h: any) => h && h.tool && !h.error).map((h: any) => String(h.tool));
+      const errorCount = history.filter((h: any) => h && (h.error || h.rejectedUnknownTool || h.malformedOutput)).length;
       if (calledTools.length > 0) {
-        retainWorkflowDecision(input.task, calledTools, 'completed agent run');
+        retainWorkflowDecision(input.task, calledTools, {
+          summary: 'completed agent run',
+          escalated: esc.escalated,
+          errorCount,
+        });
       }
       return { decision, toolCalls, iterations: i, escalated: esc.escalated, sessionId: session?.id, escalations: esc.trail };
     }
