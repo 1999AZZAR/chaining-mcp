@@ -56,3 +56,28 @@ describe('Episodic memory & retention (P1-C5)', () => {
     if (existsSync(testDb)) unlinkSync(testDb);
   });
 });
+
+import { resolveSystemPromptPath } from './.dist/agent/needle-provider.js';
+
+describe('Profile-aware system grounding (P1-C6)', () => {
+  test('defaults to hela-system.txt when no profile is set', () => {
+    delete process.env.HELA_PROFILE;
+    delete process.env.NEEDLE_SYSTEM_PATH;
+    const path = resolveSystemPromptPath();
+    assert.equal(path, 'assets/needle/hela-system.txt');
+  });
+
+  test('resolves specific profile grounding card when HELA_PROFILE is set', () => {
+    process.env.HELA_PROFILE = 'dev-workspace';
+    const path = resolveSystemPromptPath();
+    assert.equal(path, 'assets/needle/profiles/dev-workspace.txt');
+    delete process.env.HELA_PROFILE;
+  });
+
+  test('falls back gracefully to hela-system.txt for unknown profile', () => {
+    process.env.HELA_PROFILE = 'unknown-profile-xyz';
+    const path = resolveSystemPromptPath();
+    assert.equal(path, 'assets/needle/hela-system.txt');
+    delete process.env.HELA_PROFILE;
+  });
+});

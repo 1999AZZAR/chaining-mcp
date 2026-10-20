@@ -112,8 +112,11 @@ docker-compose.override.yml
 memory.db*
 # Mitosis RunStore (SQLite WAL, runtime state)
 hela-runs.db*
-# Needle 2 bundled binaries (fetched via npm run needle:fetch, Apache-2.0 Cactus-Compute/needle2)
-assets/needle/
+# Needle binaries & weights (fetched via npm run needle:fetch)
+assets/needle/*
+!assets/needle/hela-system.txt
+!assets/needle/profiles/
+!assets/needle/profiles/*
 # Agent test build output
 tests/agent/.dist/
 tests/agent/bench-results.json

@@ -33,6 +33,21 @@ export function needleDefaultsForGeneration(gen: '2' | '3'): { enginePath: strin
     : { enginePath: bundledEnginePath(), modelPath: 'assets/needle/needle2.cact' };
 }
 
+export function resolveSystemPromptPath(): string | undefined {
+  if (process.env.NEEDLE_SYSTEM_PATH && existsSync(process.env.NEEDLE_SYSTEM_PATH)) {
+    return process.env.NEEDLE_SYSTEM_PATH;
+  }
+  const profile = (process.env.HELA_PROFILE || '').toLowerCase().trim();
+  if (profile) {
+    const profileFile = `assets/needle/profiles/${profile}.txt`;
+    if (existsSync(profileFile)) return profileFile;
+  }
+  if (existsSync('assets/needle/hela-system.txt')) {
+    return 'assets/needle/hela-system.txt';
+  }
+  return undefined;
+}
+
 export function needleConfigFromEnv(): NeedleConfig {
   const generation = process.env.NEEDLE_GENERATION === '2' ? '2' : '3';
   const defaults = needleDefaultsForGeneration(generation);
@@ -47,7 +62,7 @@ export function needleConfigFromEnv(): NeedleConfig {
     // Persisted tool-embedding cache: the engine keys it by a fingerprint over
     // the schemas + model, so one path safely serves many toolsets and restarts.
     toolIndexPath: process.env.NEEDLE_TOOL_INDEX_PATH || 'assets/needle/tools.idx',
-    systemPath: process.env.NEEDLE_SYSTEM_PATH || (existsSync('assets/needle/hela-system.txt') ? 'assets/needle/hela-system.txt' : undefined),
+    systemPath: resolveSystemPromptPath(),
     servePort: parseInt(process.env.NEEDLE_PORT || '18080', 10),
     useServer: (process.env.NEEDLE_USE_SERVER || 'true').toLowerCase() !== 'false',
     generation,

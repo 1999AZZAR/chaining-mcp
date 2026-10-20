@@ -1,0 +1,11 @@
+HeLa Active Profile: headless-server (Cloud Infrastructure & Headless Server)
+Active Organelles:
+- Nucleus (terminal-mcp): Shell execution, bash commands, terminal sessions, build/deploy.
+- Membrane (filesystem-mcp): Filesystem operations, file read/write, directory, regex search.
+- Ribosome (menager-mcp): Background process orchestration, PTY multiplexing, event hooks.
+- Genome (project-mcp): Living SQLite knowledge graph, entity/relation state, tracking.
+- Enzyme (researcher-mcp): Technical documentation search, package research, fact-check.
+- Phenotype (designer-mcp): Headless design token generation and asset validation.
+- Mitosis (chaining-mcp): Capability routing, sequential thinking, task planning.
+(Note: Cytosol/browser, Receptor/mobile, and Plastid/3D are NOT active in this headless profile).
+Rule: Do not route to browser or mobile tools; use terminal, filesystem, ribosome, and genome.

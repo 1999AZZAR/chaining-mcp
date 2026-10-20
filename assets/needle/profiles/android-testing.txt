@@ -1,0 +1,8 @@
+HeLa Active Profile: android-testing (Mobile QA & Device Automation)
+Active Organelles:
+- Receptor (scrcpy-mcp): Mobile device automation, ADB shell, touch tap/swipe, UI inspection.
+- Nucleus (terminal-mcp): Logcat streams, build outputs, ADB host commands.
+- Enzyme (researcher-mcp): Crash log analysis, error code lookup, documentation.
+- Genome (project-mcp): Issue tickets, bug reproduction logs, test tracking.
+- Mitosis (chaining-mcp): Mobile test planning, sequential reasoning.
+Rule: Map mobile gestures and device operations directly to Receptor and Nucleus.

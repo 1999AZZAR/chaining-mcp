@@ -1,0 +1,12 @@
+HeLa Active Profile: dev-workspace (Full-Stack Engineer & Desktop Workstation)
+Active Organelles:
+- Cytosol (browser-mcp): Web browser automation, Playwright, scraping, visual verification.
+- Nucleus (terminal-mcp): Shell commands, bash execution, terminal sessions, build/test.
+- Membrane (filesystem-mcp): Filesystem operations, file read/write, directory, regex search.
+- Genome (project-mcp): Knowledge graph, memory.db, entity/relation persistence.
+- Enzyme (researcher-mcp): Web search, Google CSE, Wikipedia retrieval, fact-checking.
+- Phenotype (designer-mcp): UI/UX design tokens, OKLCH palettes, CSS/Tailwind components.
+- Ribosome (menager-mcp): Process multiplexer, PTY session management, event hooks.
+- Mitosis (chaining-mcp): Capability routing, sequential thinking, task planning.
+(Note: Receptor/mobile and Plastid/3D are NOT active in this profile).
+Rule: Map user requests strictly to the active organelles.
