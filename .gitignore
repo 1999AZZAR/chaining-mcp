@@ -115,6 +115,8 @@ hela-runs.db*
 # Needle binaries & weights (fetched via npm run needle:fetch)
 assets/needle/*
 !assets/needle/hela-system.txt
+!assets/needle/hela-stack-tools.json
+!assets/needle/tools.idx
 !assets/needle/profiles/
 !assets/needle/profiles/*
 # Agent test build output
