@@ -6650,7 +6650,7 @@
   {
     "name": "search_trends",
     "server": "hela-enzyme",
-    "description": "Track and analyze search interest trends over time",
+    "description": "Track search interest trends and tech community velocity via Hacker News Algolia API",
     "parameters": {
       "properties": {
         "timeframe": {
@@ -6820,7 +6820,7 @@
   {
     "name": "news_monitor",
     "server": "hela-enzyme",
-    "description": "Monitor news and get alerts for specific topics",
+    "description": "Monitor live news headlines and alerts via Google News public RSS feeds (zero keys required)",
     "parameters": {
       "properties": {
         "country": {
@@ -6945,7 +6945,7 @@
   {
     "name": "google_search",
     "server": "hela-enzyme",
-    "description": "Search the web using Google Custom Search API",
+    "description": "Search the web using Google Custom Search API with automatic zero-key multi-engine fallback",
     "parameters": {
       "properties": {
         "num": {
@@ -7179,7 +7179,7 @@
   {
     "name": "academic_search",
     "server": "hela-enzyme",
-    "description": "Search academic papers and research documents",
+    "description": "Search academic papers and preprints via arXiv OpenSearch API (zero keys required)",
     "parameters": {
       "properties": {
         "dateRange": {

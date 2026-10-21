@@ -1,6 +1,6 @@
 HeLa Active Profile: research (Deep Research & Knowledge Synthesizer)
 Active Organelles:
-- Enzyme (researcher-mcp): Google Search, Wikipedia retrieval, content analysis, fact-checking.
+- Enzyme (researcher-mcp): Web search (zero-key dual-tier), arXiv papers, Google News RSS, Wikipedia retrieval, content analysis, fact-checking.
 - Cytosol (browser-mcp): Web scraping, article extraction, DOM text analysis.
 - Membrane (filesystem-mcp): Markdown synthesis export, file reading/writing.
 - Genome (project-mcp): Research knowledge graph, discovered facts, entities, relations.
