@@ -3949,6 +3949,39 @@
     }
   },
   {
+    "name": "session_close",
+    "server": "hela-nucleus",
+    "description": "Close and disconnect an active terminal session, releasing its session slot. Accepts a session name (e.g. \"default\", \"build\"), session key (e.g. \"local-default\"), or \"all\" to close all active sessions.",
+    "parameters": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "session": {
+          "description": "Name or key of the session to close, or \"all\" to disconnect all sessions",
+          "type": "string"
+        },
+        "host": {
+          "description": "Remote host for remote sessions (optional, omit for local)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "session_list",
+    "server": "hela-nucleus",
+    "description": "List all active local and remote terminal sessions, showing session keys, working directories, active environment variables, last activity timestamps, and capacity.",
+    "parameters": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    }
+  },
+  {
     "name": "workflow_status",
     "server": "hela-mitosis",
     "description": "Get the current status and step results of a workflow executed by workflow_orchestrator or agent_run",
@@ -4785,6 +4818,45 @@
       },
       "required": [
         "toolChain"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "agent_run",
+    "server": "hela-mitosis",
+    "description": "Run a task through the Needle agent runtime: plans with the local model, executes tools via the workflow orchestrator, escalates to OpenRouter only on low confidence or failure. Requires MITOSIS_AGENT_ENABLED=true and a fetched engine (npm run needle:fetch).",
+    "parameters": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "task": {
+          "description": "The task or objective for the agent to accomplish",
+          "type": "string"
+        },
+        "maxIterations": {
+          "default": 8,
+          "description": "Maximum agent decide-act-observe iterations",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "number"
+        },
+        "maxToolCalls": {
+          "default": 12,
+          "description": "Maximum tool executions per run",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "number"
+        },
+        "maxExecutionMs": {
+          "default": 60000,
+          "description": "Maximum run wall-clock time in milliseconds",
+          "maximum": 300000,
+          "minimum": 1000,
+          "type": "number"
+        }
+      },
+      "required": [
+        "task"
       ],
       "type": "object"
     }
