@@ -3,8 +3,13 @@ import assert from 'node:assert/strict';
 import { agentRun } from './.dist/agent/agent.js';
 import {
   HELA_CAPABILITIES, selectCapabilitiesForTask, scopeToolsForTask,
-  capabilityOfTool, promptContextSize,
+  capabilityOfTool, promptContextSize, stemWord, stemMatches,
+  CAPABILITY_TRANSITIONS, scopeCompactTools, recallCapabilityPrecedents,
 } from './.dist/agent/capability-graph.js';
+import { DatabaseSync } from 'node:sqlite';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 const T = (name, server, description = '') => ({ name, server, description });
 const MIXED = [
@@ -116,5 +121,95 @@ describe('agentRun capabilityRouting', () => {
     });
     assert.deepEqual(seen, ['read_file']);
     assert.equal(run.toolCalls, 1);
+  });
+});
+
+describe('dynamic capability resolver v2', () => {
+  test('stemWord and stemMatches support morphological inflection', () => {
+    assert.equal(stemWord('designing'), 'design');
+    assert.equal(stemWord('rendering'), 'render');
+    assert.equal(stemWord('components'), 'component');
+    assert.equal(stemWord('tokens'), 'token');
+
+    assert.ok(stemMatches('designing', 'design'));
+    assert.ok(stemMatches('palettes', 'palette'));
+    assert.ok(stemMatches('scraped', 'scrape'));
+    assert.ok(stemMatches('modifying', 'modify'));
+    assert.ok(!stemMatches('unrelated', 'palette'));
+  });
+
+  test('stemmed keyword hits map to expected capabilities', () => {
+    const cases = [
+      ['designing a bento showcase with kinetic animations', 'ui.design'],
+      ['scraped the headlines from web pages', 'browser.observe'],
+      ['syncing design system tokens to stitch canvas', 'ui.design'],
+      ['executed bash commands to compile the typescript project', 'terminal.execute'],
+      ['modifying the config file and archiving the directory', 'filesystem.write'],
+    ];
+    for (const [task, expected] of cases) {
+      const caps = selectCapabilitiesForTask(task);
+      assert.ok(caps.includes(expected), `'${task}' -> [${caps}] (want ${expected})`);
+    }
+  });
+
+  test('stateful transition graph boosts logically subsequent capabilities', () => {
+    // 1. After research.search, user says 'save it' -> boosts filesystem.write
+    const res1 = selectCapabilitiesForTask('save it', { previousCapability: 'research.search' });
+    assert.ok(res1.includes('filesystem.write'), `want filesystem.write in [${res1}]`);
+
+    // 2. After filesystem.write, task says 'test page' -> terminal.execute or browser.observe
+    const res2 = selectCapabilitiesForTask('test page', { previousTool: 'write_file' });
+    assert.ok(res2.includes('terminal.execute') || res2.includes('browser.observe'), `want terminal.execute or browser.observe in [${res2}]`);
+
+    // 3. After ui.design, task says 'inspect canvas' -> ui.design
+    const res3 = selectCapabilitiesForTask('inspect canvas', { previousCapability: 'ui.design' });
+    assert.ok(res3.includes('ui.design'), `want ui.design in [${res3}]`);
+  });
+
+  test('scopeCompactTools provides lean 1-line tool representation', () => {
+    const tools = [
+      T('generate_tokens', 'designer', 'Generate OKLCH color tokens for design system'),
+      T('stitch_create', 'designer', 'Create a new screen in Stitch Canvas'),
+    ];
+    const compact = scopeCompactTools(tools);
+    assert.ok(compact.includes('- generate_tokens: Generate OKLCH color tokens'));
+    assert.ok(compact.includes('- stitch_create: Create a new screen in Stitch Canvas'));
+  });
+
+  test('episodic prior precedent steering elevates successful past capabilities', () => {
+    const tmpDir = os.tmpdir();
+    const testDb = path.join(tmpDir, `test-cap-precedents-${Date.now()}.db`);
+    try {
+      const db = new DatabaseSync(testDb);
+      db.exec(`
+        CREATE TABLE entities (
+          name TEXT PRIMARY KEY,
+          entity_type TEXT,
+          observations TEXT,
+          created_at TEXT,
+          updated_at TEXT
+        );
+      `);
+      const now = new Date().toISOString();
+      const obs = JSON.stringify([
+        `[${now}] steps: 2 | tools: [generate_tokens, stitch_sync_design_system] | note: successful theme creation`
+      ]);
+      db.prepare(`
+        INSERT INTO entities (name, entity_type, observations, created_at, updated_at)
+        VALUES ('workflow:brand-tokens', 'workflow', ?, ?, ?)
+      `).run(obs, now, now);
+      db.close();
+
+      const precedents = recallCapabilityPrecedents('brand tokens setup', { memoryDbPath: testDb });
+      assert.ok(precedents.includes('ui.design'), `precedents [${precedents}] should include ui.design`);
+
+      const scoped = selectCapabilitiesForTask('brand tokens setup', {
+        useEpisodicMemory: true,
+        memoryDbPath: testDb,
+      });
+      assert.equal(scoped[0], 'ui.design');
+    } finally {
+      try { fs.unlinkSync(testDb); } catch {}
+    }
   });
 });

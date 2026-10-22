@@ -1,20 +1,27 @@
 /**
- * HeLa capability graph (P1-C4, capability-first routing).
+ * HeLa capability graph (P1-C4, capability-first routing; v2 dynamic resolver).
  *
  * The planner must select CAPABILITIES first (`filesystem.read`,
  * `terminal.execute`, ...) and only then see the concrete tools behind
- * them — never a 200+ flat tool dump (Cytosol ~88, Genome 34, Enzyme 28,
- * Phenotype 27). This module is the static graph + task→capability
- * selector; the agent loop consumes it via `scopeToolsForTask` (opt-in
- * `capabilityRouting` flag — default off, planner behavior unchanged).
+ * them — never a 200+ flat tool dump (Cytosol ~93, Genome 38, Enzyme 29,
+ * Phenotype 46, Receptor 46, Ribosome 28).
+ *
+ * v2 Dynamic Resolver Features:
+ * 1. Hybrid Lexical + Stemmed Keyword Matching (exact: 3.5/3.0, stem: 1.8).
+ * 2. BM25 Description Token Overlap (0.6 per matching term).
+ * 3. Markov Capability Transition Graph (CAPABILITY_TRANSITIONS boost 1.0 - 2.0).
+ * 4. Episodic Prior Precedent Steering (Genome memory.db workflow recall boost 2.5).
+ * 5. Adaptive Compact Tool Presentation (scopeCompactTools).
  *
  * Safety invariants:
- * - No keyword hit → return the full catalog (never blind the planner).
- * - Filter yielding zero tools → return the full catalog.
- * - Selection is deterministic (keyword score, registry order tie-break).
+ * - No keyword/signal hit -> return the full catalog (never blind the planner).
+ * - Filter yielding zero tools -> return the full catalog.
+ * - Selection is deterministic (score-ranked, registry order tie-break).
  */
 
 import { needleFamilyOf } from './needle-provider.js';
+import { DatabaseSync } from 'node:sqlite';
+import { defaultMemoryDbPath, EpisodicMemoryConfig } from './episodic-retention.js';
 
 export interface HelaCapability {
   name: string;
@@ -107,7 +114,62 @@ export const HELA_CAPABILITIES: HelaCapability[] = [
   },
 ];
 
+/**
+ * Probabilistic Directed Transition Graph.
+ * Maps current/previous capability to the most likely next capabilities
+ * in multi-step task execution chains.
+ */
+export const CAPABILITY_TRANSITIONS: Record<string, string[]> = {
+  'research.search': ['filesystem.write', 'terminal.execute', 'project.query'],
+  'filesystem.read': ['filesystem.write', 'terminal.execute', 'ui.design'],
+  'filesystem.write': ['terminal.execute', 'browser.observe', 'project.query'],
+  'terminal.execute': ['filesystem.read', 'terminal.execute', 'project.query', 'browser.observe'],
+  'browser.observe': ['browser.act', 'filesystem.write', 'project.query'],
+  'browser.act': ['browser.observe', 'filesystem.write'],
+  'ui.design': ['filesystem.write', 'browser.observe', 'ui.design'],
+  'project.query': ['research.search', 'filesystem.read', 'terminal.execute', 'ui.design'],
+  'android.inspect': ['android.control', 'terminal.execute'],
+  'android.control': ['android.inspect', 'terminal.execute'],
+  'blender.model': ['filesystem.read', 'blender.model', 'filesystem.write'],
+};
+
 export interface ToolDecl { name: string; description?: string; schema?: unknown; server?: string }
+
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'this', 'that', 'what', 'which',
+  'into', 'over', 'under', 'about', 'after', 'before', 'than', 'more',
+  'some', 'only', 'have', 'been', 'will', 'would', 'could', 'should',
+  'you', 'your', 'please', 'just', 'now', 'then', 'here', 'there'
+]);
+
+export function stemWord(word: string): string {
+  const w = word.toLowerCase();
+  if (w.length <= 4) return w;
+  if (w.endsWith('ing') && w.length > 5) return w.slice(0, -3);
+  if (w.endsWith('tion') && w.length > 6) return w.slice(0, -4);
+  if (w.endsWith('ment') && w.length > 6) return w.slice(0, -4);
+  if (w.endsWith('able') && w.length > 6) return w.slice(0, -4);
+  if (w.endsWith('ized') && w.length > 6) return w.slice(0, -4);
+  if (w.endsWith('izes') && w.length > 6) return w.slice(0, -4);
+  if (w.endsWith('ize') && w.length > 5) return w.slice(0, -3);
+  if (w.endsWith('ies') && w.length > 5) return w.slice(0, -3) + 'y';
+  if (w.endsWith('ed') && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith('es') && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) return w.slice(0, -1);
+  return w;
+}
+
+export function stemMatches(textWord: string, targetWord: string): boolean {
+  const tw = textWord.toLowerCase();
+  const tgt = targetWord.toLowerCase();
+  if (tw === tgt) return true;
+  const stem1 = stemWord(tw);
+  const stem2 = stemWord(tgt);
+  if (stem1 === stem2) return true;
+  if (stem1.length >= 4 && stem2.startsWith(stem1)) return true;
+  if (stem2.length >= 4 && stem1.startsWith(stem2)) return true;
+  return false;
+}
 
 function compiled(cap: HelaCapability): RegExp[] {
   return cap.toolPatterns.map(p => new RegExp(p, 'i'));
@@ -135,21 +197,162 @@ export function capabilityOfTool(serverName: string, toolName: string): string {
   return `family:${needleFamilyOf(toolName)}`;
 }
 
-/**
- * Score capabilities against task text. Returns up to `max` names.
- * Empty = no signal → caller must expose the FULL catalog.
- */
+/** Match a keyword against task text using regex word boundary. */
 function keywordHit(text: string, kw: string): boolean {
   const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`\\b${esc}\\b`, 'i').test(text);
 }
 
-export function selectCapabilitiesForTask(task: string, max = 3): string[] {
+/**
+ * Recall which capability families were involved in past successful workflows
+ * matching this task pattern from memory.db.
+ */
+export function recallCapabilityPrecedents(
+  task: string,
+  config: EpisodicMemoryConfig = {}
+): string[] {
+  const dbPath = config.memoryDbPath || defaultMemoryDbPath();
+  if (!dbPath) return [];
+
+  const keywords = (task || '')
+    .toLowerCase()
+    .split(/[^a-z0-9_-]+/)
+    .filter(w => w.length > 3 && !STOPWORDS.has(w))
+    .slice(0, 5);
+
+  if (keywords.length === 0) return [];
+
+  try {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    const stmt = db.prepare(`
+      SELECT observations FROM entities
+      WHERE entity_type = 'workflow' AND (name LIKE ? OR observations LIKE ?)
+      ORDER BY updated_at DESC LIMIT 5
+    `);
+
+    const toolHits: string[] = [];
+    for (const kw of keywords) {
+      const pattern = `%${kw}%`;
+      const rows = stmt.all(pattern, pattern) as Array<{ observations: string }>;
+      for (const row of rows) {
+        let obsList: string[] = [];
+        try {
+          obsList = JSON.parse(row.observations || '[]');
+        } catch {
+          obsList = [String(row.observations)];
+        }
+        for (const obs of obsList) {
+          const match = obs.match(/tools:\s*\[(.*?)\]/);
+          if (match && match[1]) {
+            const tools = match[1].split(',').map(s => s.trim()).filter(Boolean);
+            toolHits.push(...tools);
+          }
+        }
+      }
+      if (toolHits.length >= 8) break;
+    }
+    db.close();
+
+    const capCounts: Record<string, number> = {};
+    for (const t of toolHits) {
+      const cap = capabilityOfTool('', t);
+      if (cap && !cap.startsWith('family:')) {
+        capCounts[cap] = (capCounts[cap] || 0) + 1;
+      }
+    }
+
+    return Object.entries(capCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(entry => entry[0]);
+  } catch {
+    return [];
+  }
+}
+
+export interface ScopeOptions {
+  maxCaps?: number;
+  previousTool?: string;
+  previousCapability?: string;
+  useEpisodicMemory?: boolean;
+  memoryDbPath?: string;
+  taskContext?: string;
+}
+
+/**
+ * Score capabilities against task text using dynamic multi-stage resolver:
+ * 1. Exact and stemmed keyword hits (exact: 3.5/3.0, stem: 1.8).
+ * 2. BM25 description token overlap (0.6).
+ * 3. Stateful transition graph boost from previousTool/previousCapability (1.0 - 2.0).
+ * 4. Episodic memory precedent boost from memory.db (1.5 - 2.5).
+ */
+export function selectCapabilitiesForTask(task: string, options: number | ScopeOptions = 3): string[] {
+  const opts: ScopeOptions = typeof options === 'number' ? { maxCaps: options } : (options || {});
+  const max = opts.maxCaps ?? 3;
   const text = task || '';
-  const scored = HELA_CAPABILITIES.map(cap => ({
-    name: cap.name,
-    score: cap.keywords.filter(k => keywordHit(text, k)).length,
-  })).filter(s => s.score > 0);
+  if (!text.trim() && !opts.previousTool && !opts.previousCapability) {
+    return [];
+  }
+
+  const rawWords = text.toLowerCase().split(/[^a-z0-9_-]+/).filter(Boolean);
+  const taskWords = rawWords.filter(w => !STOPWORDS.has(w) && w.length >= 2);
+
+  let transitionBoosts: Record<string, number> = {};
+  const prevCap = opts.previousCapability || (opts.previousTool ? capabilityOfTool('', opts.previousTool) : undefined);
+  if (prevCap && CAPABILITY_TRANSITIONS[prevCap]) {
+    CAPABILITY_TRANSITIONS[prevCap].forEach((capName, idx) => {
+      transitionBoosts[capName] = 2.0 - idx * 0.5;
+    });
+  }
+
+  let precedentBoosts: Record<string, number> = {};
+  if (opts.useEpisodicMemory && text.trim()) {
+    try {
+      const precedents = recallCapabilityPrecedents(text, { memoryDbPath: opts.memoryDbPath });
+      precedents.forEach((capName, idx) => {
+        precedentBoosts[capName] = 2.5 - idx * 0.5;
+      });
+    } catch {
+      // safe fallback
+    }
+  }
+
+  const scored = HELA_CAPABILITIES.map(cap => {
+    let score = 0;
+
+    // 1. Exact and stemmed keyword hits
+    for (const kw of cap.keywords) {
+      if (kw.includes(' ')) {
+        if (keywordHit(text, kw)) score += 3.5;
+      } else {
+        if (keywordHit(text, kw)) {
+          score += 3.0;
+        } else if (taskWords.some(tw => stemMatches(tw, kw))) {
+          score += 1.8;
+        }
+      }
+    }
+
+    // 2. Description token overlap (BM25 term-frequency style)
+    const descTokens = cap.description.toLowerCase().split(/[^a-z0-9_-]+/).filter(w => !STOPWORDS.has(w) && w.length >= 3);
+    for (const dt of descTokens) {
+      if (taskWords.some(tw => stemMatches(tw, dt))) {
+        score += 0.6;
+      }
+    }
+
+    // 3. Transition boost
+    if (transitionBoosts[cap.name]) {
+      score += transitionBoosts[cap.name];
+    }
+
+    // 4. Episodic precedent boost
+    if (precedentBoosts[cap.name]) {
+      score += precedentBoosts[cap.name];
+    }
+
+    return { name: cap.name, score };
+  }).filter(s => s.score > 0);
+
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, max).map(s => s.name);
 }
@@ -165,8 +368,13 @@ export interface ScopeResult {
  * capabilities. Falls back to the full catalog when there is no signal
  * or the filter would blind the planner (empty result).
  */
-export function scopeToolsForTask< T extends ToolDecl>(tools: T[], task: string, maxCaps = 3): ScopeResult & { tools: T[] } {
-  const caps = selectCapabilitiesForTask(task, maxCaps);
+export function scopeToolsForTask<T extends ToolDecl>(
+  tools: T[],
+  task: string,
+  options: number | ScopeOptions = 3
+): ScopeResult & { tools: T[] } {
+  const opts: ScopeOptions = typeof options === 'number' ? { maxCaps: options } : (options || {});
+  const caps = selectCapabilitiesForTask(task, opts);
   if (caps.length === 0) return { tools, scoped: false, capabilities: [] };
   const keep = tools.filter(t => {
     const cap = capabilityOfTool(t.server || '', t.name);
@@ -179,4 +387,9 @@ export function scopeToolsForTask< T extends ToolDecl>(tools: T[], task: string,
 /** Rendered prompt-list size (same `- name: desc` render as the loop). */
 export function promptContextSize(tools: ToolDecl[]): number {
   return tools.map(t => `- ${t.name}${t.description ? ': ' + t.description.slice(0, 80) : ''}`).join('\n').length;
+}
+
+/** Render condensed 1-line tool index for minimal context overhead. */
+export function scopeCompactTools(tools: ToolDecl[]): string {
+  return tools.map(t => `- ${t.name}: ${(t.description || '').replace(/\s+/g, ' ').slice(0, 75)}`).join('\n');
 }

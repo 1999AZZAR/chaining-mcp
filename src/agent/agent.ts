@@ -115,7 +115,7 @@ export async function agentRun(input: AgentRunInput): Promise<{ decision: AgentD
   const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
   // P1-C4: capability-first scope (falls back to full catalog on no signal).
   const enableCapRouting = input.capabilityRouting ?? (process.env['HELA_CAPABILITY_ROUTING'] !== 'false');
-  const scope = enableCapRouting ? scopeToolsForTask(input.toolSchemas, input.task) : null;
+  const scope = enableCapRouting ? scopeToolsForTask(input.toolSchemas, input.task, { useEpisodicMemory: true }) : null;
   const toolSchemas = scope && scope.scoped ? scope.tools : input.toolSchemas;
   const knownTools = new Set(toolSchemas.map(t => t.name));
   const history: unknown[] = [];
@@ -368,7 +368,8 @@ export async function agentStep(input: AgentStepInput): Promise<{
   const escalation: ModelProvider = input.providers?.escalation ?? new OpenRouterProvider();
   const needleApi: NeedleApi = primary instanceof NeedleProvider ? primary : null;
   const enableStepCapRouting = input.capabilityRouting ?? (process.env['HELA_CAPABILITY_ROUTING'] !== 'false');
-  const stepScope = enableStepCapRouting ? scopeToolsForTask(input.tools, input.task) : null;
+  const lastToolFromTail = manager.tail(session.id, 6).reverse().find(t => t.startsWith('call:'))?.replace(/^call:\s*/, '').split('(')[0].trim();
+  const stepScope = enableStepCapRouting ? scopeToolsForTask(input.tools, input.task, { previousTool: lastToolFromTail, useEpisodicMemory: true }) : null;
   const stepTools = stepScope && stepScope.scoped ? stepScope.tools : input.tools;
   const knownTools = new Set(stepTools.map(t => t.name));
   const tail = manager.tail(session.id, 6);

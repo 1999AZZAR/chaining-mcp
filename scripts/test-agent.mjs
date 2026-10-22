@@ -9,7 +9,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'tests', 'agent', '.dist');
 rmSync(out, { recursive: true, force: true });
 execFileSync('node', ['node_modules/typescript/bin/tsc',
-  'src/agent/agent.ts', 'src/agent/state.ts', 'src/agent/workflow.ts', 'src/agent/diagnostics.ts', 'src/agent/guidance.ts', 'src/agent/episodic-retention.ts', 'src/skills/skill-discovery.ts', 'src/handlers/request-handlers.ts', 'src/managers/llm-manager.ts', '--module', 'nodenext', '--moduleResolution', 'nodenext',
+  'src/agent/agent.ts', 'src/agent/capability-graph.ts', 'src/agent/state.ts', 'src/agent/workflow.ts', 'src/agent/diagnostics.ts', 'src/agent/guidance.ts', 'src/agent/episodic-retention.ts', 'src/skills/skill-discovery.ts', 'src/handlers/request-handlers.ts', 'src/managers/llm-manager.ts', '--module', 'nodenext', '--moduleResolution', 'nodenext',
   '--target', 'es2022', '--skipLibCheck', '--outDir', out, '--rootDir', 'src',
 ], { cwd: root, stdio: 'inherit' });
 if (!existsSync(join(out, 'agent', 'agent.js'))) throw new Error('compile produced no output');
