@@ -100,10 +100,10 @@ export const HELA_CAPABILITIES: HelaCapability[] = [
   },
   {
     name: 'ui.design',
-    description: 'Design tokens, components, templates, palettes (R0/pure)',
+    description: 'Design tokens, components, templates, palettes, Awwwards motion, and Stitch Canvas (R0/R1/pure)',
     servers: ['designer', 'phenotype'],
-    toolPatterns: ['design', 'palette', 'template', 'tokens', 'component', 'motion', 'brand', 'theme', 'style', 'genre'],
-    keywords: ['design', 'landing page', 'component', 'palette', 'theme', 'style', 'css', 'mockup', 'ui'],
+    toolPatterns: ['design', 'palette', 'template', 'tokens', 'component', 'motion', 'brand', 'theme', 'style', 'genre', 'stitch', 'bento', 'marquee', 'awwwards'],
+    keywords: ['design', 'landing page', 'component', 'palette', 'theme', 'style', 'css', 'mockup', 'ui', 'stitch', 'canvas', 'screen', 'awwwards', 'bento', 'motion', 'animation', 'token'],
   },
 ];
 

@@ -5,7 +5,7 @@ Active Organelles:
 - Membrane (filesystem-mcp): Filesystem operations, file read/write, directory, regex search.
 - Genome (project-mcp): Persistent knowledge graph, entity/relation memory, SQLite operations.
 - Enzyme (researcher-mcp): Web search (zero-key fallback), arXiv academic research, Google News RSS, Wikipedia retrieval, fact-checking.
-- Phenotype (designer-mcp): UI/UX design tokens, OKLCH palettes, CSS/Tailwind generation.
+- Phenotype (designer-mcp): UI/UX design tokens, OKLCH palettes, CSS/Tailwind, Awwwards kinetic motion, and native Stitch Canvas bridge.
 - Plastid (ll3m-mcp): 3D modeling with Blender, mesh creation, scene inspection, rendering.
 - Receptor (scrcpy-mcp): Mobile Android device automation, ADB shell, touch tap/swipe.
 - Ribosome (menager-mcp): Process multiplexer, PTY session management, event hooks.

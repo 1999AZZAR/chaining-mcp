@@ -1,6 +1,6 @@
 HeLa Active Profile: web-devops (Frontend & Web Automation Specialist)
 Active Organelles:
-- Phenotype (designer-mcp): OKLCH design tokens, Tailwind configuration, component generation.
+- Phenotype (designer-mcp): UI/UX design tokens, OKLCH palettes, CSS/Tailwind, Awwwards kinetic motion, and native Stitch Canvas bridge.
 - Cytosol (browser-mcp): Playwright browser automation, DOM interaction, screenshots.
 - Membrane (filesystem-mcp): Component files, HTML/CSS/JS editing, directory listing.
 - Nucleus (terminal-mcp): Dev server startup, npm scripts, lint/test commands.
