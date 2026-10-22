@@ -88,7 +88,7 @@ describe('capability graph (P1-C4)', () => {
 
 describe('Phase 2 canonical responsibility boundaries', () => {
   const SEARCH = [T('browser_search', 'browser'), T('google_search', 'researcher'), T('execute_command', 'terminal')];
-  const EXTRACT = [T('browser_get_page_markdown', 'browser'), T('extract_content', 'researcher')];
+  const EXTRACT = [T('browser_get_content', 'browser'), T('extract_content', 'researcher')];
   const READ = [T('read_file', 'filesystem'), T('terminal_cat', 'terminal')];
   const DB = [T('execute_sql', 'project'), T('query_data', 'project'), T('opencode_db', 'menager')];
 
@@ -111,8 +111,8 @@ describe('Phase 2 canonical responsibility boundaries', () => {
 
     const js = scopeToolsForTask(EXTRACT, 'search and extract text from the javascript-rendered webpage');
     const names = js.tools.map(t => t.name);
-    assert.ok(names.includes('browser_get_page_markdown'), `[${names}] should keep JS extraction`);
-    assert.ok(names.indexOf('extract_content') < names.indexOf('browser_get_page_markdown'), `[${names}] canonical must rank first`);
+    assert.ok(names.includes('browser_get_content'), `[${names}] should keep JS extraction`);
+    assert.ok(names.indexOf('extract_content') < names.indexOf('browser_get_content'), `[${names}] canonical must rank first`);
   });
 
   test('local file reads prefer read_file; terminal_cat stays for remote SSH only', () => {

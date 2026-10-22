@@ -164,7 +164,7 @@ export const CANONICAL_TOOL_GROUPS: CanonicalToolGroup[] = [
     canonical: ['extract_content'],
     restricted: [
       {
-        tool: 'browser_get_page_markdown',
+        tool: 'browser_get_content',
         reason: 'only when the page requires client-side JavaScript; use hela-enzyme extract_content otherwise',
         allowWhen: /\b(browser|javascript|js|client-side|spa|dynamic|rendered|dom|playwright)\b/i,
       },
@@ -289,7 +289,7 @@ const EXPLICIT_TOOL_CAPABILITY: Record<string, string> = {
   extract_content: 'research.search',
   google_search: 'research.search',
   browser_search: 'research.search',
-  browser_get_page_markdown: 'browser.observe',
+  browser_get_content: 'browser.observe',
   read_file: 'filesystem.read',
   terminal_cat: 'terminal.execute',
   execute_sql: 'project.query',

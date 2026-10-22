@@ -6936,7 +6936,7 @@
   {
     "name": "extract_content",
     "server": "hela-enzyme",
-    "description": "Canonical content extraction: fetch a URL and extract its main content. Use browser_get_page_markdown only when client-side JavaScript is required.",
+    "description": "Canonical content extraction: fetch a URL and extract its main content. Use hela-cytosol browser_get_content (format=markdown) only when client-side JavaScript is required.",
     "parameters": {
       "properties": {
         "url": {
@@ -7184,146 +7184,52 @@
     }
   },
   {
-    "name": "browser_wait_until_stable",
+    "name": "browser_wait",
     "server": "hela-cytosol",
-    "description": "Wait for the page to reach a stable state (networkidle).",
+    "description": "Wait for time, selector, URL, page load, network idle, DOM change, or SPA navigation. Consolidates the former wait_until_stable, wait_for_load, wait_for_selector, wait_for_url, wait_for_navigation, and wait_for_change tools.",
     "parameters": {
+      "type": "object",
       "properties": {
-        "timeout": {
-          "default": 30000,
-          "type": "number"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_wait_for_url",
-    "server": "hela-cytosol",
-    "description": "Wait for the URL to match a pattern.",
-    "parameters": {
-      "properties": {
-        "pattern": {
-          "description": "Substring or regex (prefixed with regex:)",
-          "type": "string"
+        "condition": {
+          "type": "string",
+          "enum": [
+            "time",
+            "selector",
+            "url",
+            "load",
+            "stable",
+            "change",
+            "navigation"
+          ],
+          "default": "time",
+          "description": "What to wait for. navigation waits for a URL change/pattern or selector after an action."
         },
-        "timeout": {
-          "default": 15000,
-          "type": "number"
-        }
-      },
-      "required": [
-        "pattern"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_wait_for_selector",
-    "server": "hela-cytosol",
-    "description": "Wait for an element to appear.",
-    "parameters": {
-      "properties": {
-        "selector": {
-          "type": "string"
+        "target": {
+          "type": "string",
+          "description": "Selector for selector/change, URL substring or regex: pattern for url/navigation."
         },
-        "timeout": {
-          "default": 10000,
-          "type": "number"
-        }
-      },
-      "required": [
-        "selector"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_wait_for_navigation",
-    "server": "hela-cytosol",
-    "description": "Smart wait after an action: waits for URL to change/contain a pattern, or for a specific selector to appear. Use after clicks that trigger navigation instead of fixed browser_wait.",
-    "parameters": {
-      "properties": {
-        "selector": {
-          "description": "Wait for this CSS selector to appear on the page.",
-          "type": "string"
+        "timeoutMs": {
+          "type": "number",
+          "description": "Maximum wait time in milliseconds."
         },
-        "timeout": {
-          "default": 15000,
-          "description": "Max wait time in ms.",
-          "type": "number"
+        "ms": {
+          "type": "number",
+          "description": "Milliseconds for condition=time (alias for timeoutMs)."
         },
-        "urlPattern": {
-          "description": "Wait until URL contains this string. Supports regex: prefix.",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_wait_for_load",
-    "server": "hela-cytosol",
-    "description": "Wait for the page load event. Use instead of browser_wait_until_stable for pages with persistent WebSocket connections or polling that never reach networkidle.",
-    "parameters": {
-      "properties": {
         "state": {
-          "default": "load",
-          "description": "\"load\" waits for full page load including subresources. \"domcontentloaded\" fires earlier, once HTML is parsed.",
+          "type": "string",
           "enum": [
             "load",
             "domcontentloaded"
           ],
-          "type": "string"
+          "default": "load",
+          "description": "Page load state for condition=load."
         },
-        "timeout": {
-          "default": 30000,
-          "type": "number"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_wait_for_change",
-    "server": "hela-cytosol",
-    "description": "Wait for an element text or attribute to change. Essential for SPAs where content updates after actions.",
-    "parameters": {
-      "properties": {
         "attribute": {
-          "description": "Attribute to watch (default: textContent)",
-          "type": "string"
-        },
-        "selector": {
-          "description": "CSS selector to watch",
-          "type": "string"
-        },
-        "timeout": {
-          "default": 10000,
-          "description": "Max wait in ms",
-          "type": "number"
+          "type": "string",
+          "description": "Attribute to watch for condition=change (default: textContent)."
         }
-      },
-      "required": [
-        "selector"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_wait",
-    "server": "hela-cytosol",
-    "description": "Wait for a specified number of milliseconds.",
-    "parameters": {
-      "properties": {
-        "ms": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "ms"
-      ],
-      "type": "object"
+      }
     }
   },
   {
@@ -7496,24 +7402,6 @@
     }
   },
   {
-    "name": "browser_smart_scroll",
-    "server": "hela-cytosol",
-    "description": "Incremental scroll to trigger lazy loading.",
-    "parameters": {
-      "properties": {
-        "delayMs": {
-          "default": 800,
-          "type": "number"
-        },
-        "steps": {
-          "default": 5,
-          "type": "number"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
     "name": "browser_set_agent_profile",
     "server": "hela-cytosol",
     "description": "Set the agent behavior profile.",
@@ -7601,43 +7489,54 @@
     }
   },
   {
-    "name": "browser_scroll_to",
+    "name": "browser_scroll",
     "server": "hela-cytosol",
-    "description": "Scroll to an element or coordinates.",
+    "description": "Scroll by direction and amount, to a selector or coordinates, or incrementally to trigger lazy loading. Consolidates the former scroll_to and smart_scroll tools.",
     "parameters": {
+      "type": "object",
       "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "by",
+            "to",
+            "lazy"
+          ],
+          "description": "Scroll mode. Inferred from selector/x/y (to) or steps (lazy); defaults to by."
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "up",
+            "down"
+          ],
+          "default": "down"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Pixels for mode=by (default 500)."
+        },
         "selector": {
-          "type": "string"
+          "type": "string",
+          "description": "Element target for mode=to."
         },
         "x": {
           "type": "number"
         },
         "y": {
           "type": "number"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_scroll",
-    "server": "hela-cytosol",
-    "description": "Scroll the page.",
-    "parameters": {
-      "properties": {
-        "amount": {
-          "type": "number"
         },
-        "direction": {
-          "default": "down",
-          "enum": [
-            "up",
-            "down"
-          ],
-          "type": "string"
+        "steps": {
+          "type": "number",
+          "default": 5,
+          "description": "Steps for mode=lazy."
+        },
+        "delayMs": {
+          "type": "number",
+          "default": 800,
+          "description": "Delay between lazy scroll steps."
         }
-      },
-      "type": "object"
+      }
     }
   },
   {
@@ -7673,25 +7572,6 @@
       "required": [
         "name"
       ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_right_click",
-    "server": "hela-cytosol",
-    "description": "Right-click an element.",
-    "parameters": {
-      "properties": {
-        "selector": {
-          "type": "string"
-        },
-        "x": {
-          "type": "number"
-        },
-        "y": {
-          "type": "number"
-        }
-      },
       "type": "object"
     }
   },
@@ -7929,7 +7809,7 @@
   {
     "name": "browser_observe",
     "server": "hela-cytosol",
-    "description": "Return only interactable elements (buttons, inputs, links, selects) without a screenshot. Each element gets a stable `ref` number. Use before planning an action to enumerate available targets with minimal token cost — then act with browser_click_ref or browser_type.",
+    "description": "Return only interactable elements (buttons, inputs, links, selects) without a screenshot. Each element gets a stable `ref` number. Use before planning an action to enumerate available targets with minimal token cost — then act with browser_click or browser_type.",
     "parameters": {
       "properties": {},
       "type": "object"
@@ -8232,41 +8112,42 @@
     }
   },
   {
-    "name": "browser_get_visible_text",
+    "name": "browser_get_content",
     "server": "hela-cytosol",
-    "description": "Extract clean text from only visible elements on the page. Skips hidden, display:none, and zero-size elements. Returns structured text without DOM noise.",
+    "description": "Restricted to browser or JavaScript-rendered content; prefer hela-enzyme extract_content for static pages. Extract page content as markdown, text, visible text, HTML, or accessibility tree. Consolidates the former get_text, get_html, get_visible_text, get_page_markdown, and get_accessibility_tree tools.",
     "parameters": {
+      "type": "object",
       "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "text",
+            "visible",
+            "html",
+            "axtree"
+          ],
+          "default": "markdown",
+          "description": "Output format."
+        },
         "selector": {
-          "description": "Optional CSS selector to scope extraction (default: main content area).",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_get_text",
-    "server": "hela-cytosol",
-    "description": "Read text from element(s). When all=true, returns up to maxLines results (default 100).",
-    "parameters": {
-      "properties": {
+          "type": "string",
+          "description": "CSS selector to scope extraction. Required for format=text."
+        },
         "all": {
+          "type": "boolean",
           "default": false,
-          "type": "boolean"
+          "description": "For format=text: read all matching elements."
         },
         "maxLines": {
-          "description": "Max number of elements to return when all=true. Default 100.",
-          "type": "number"
+          "type": "number",
+          "description": "For format=text: max elements returned when all=true. Default 100."
         },
-        "selector": {
-          "type": "string"
+        "maxLength": {
+          "type": "number",
+          "description": "For format=markdown/axtree: max output chars. Default 5000."
         }
-      },
-      "required": [
-        "selector"
-      ],
-      "type": "object"
+      }
     }
   },
   {
@@ -8284,38 +8165,6 @@
           "default": false,
           "description": "Include a screenshot. Default false — only pass true when visual context is needed (canvas, iframes, hidden-from-AX elements).",
           "type": "boolean"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_get_page_markdown",
-    "server": "hela-cytosol",
-    "description": "Restricted to content that requires client-side JavaScript; prefer hela-enzyme extract_content for static pages. Extract page content as structured markdown (headings, lists, tables, links).",
-    "parameters": {
-      "properties": {
-        "maxLength": {
-          "description": "Max output length in chars. Default 5000.",
-          "type": "number"
-        },
-        "selector": {
-          "description": "Optional CSS selector to scope extraction (default: main content area).",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_get_html",
-    "server": "hela-cytosol",
-    "description": "Get the full HTML content of the page or a specific element.",
-    "parameters": {
-      "properties": {
-        "selector": {
-          "description": "Optional selector to get innerHTML of.",
-          "type": "string"
         }
       },
       "type": "object"
@@ -8343,24 +8192,6 @@
         },
         "pattern": {
           "description": "Optional filter pattern to match against captured URLs.",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_get_accessibility_tree",
-    "server": "hela-cytosol",
-    "description": "Get the accessibility tree as structured text — roles, names, states. Useful for understanding page structure without screenshots.",
-    "parameters": {
-      "properties": {
-        "maxLength": {
-          "description": "Max output length in chars. Default 5000.",
-          "type": "number"
-        },
-        "selector": {
-          "description": "Optional CSS selector to scope extraction.",
           "type": "string"
         }
       },
@@ -8614,25 +8445,6 @@
     }
   },
   {
-    "name": "browser_double_click",
-    "server": "hela-cytosol",
-    "description": "Double-click an element.",
-    "parameters": {
-      "properties": {
-        "selector": {
-          "type": "string"
-        },
-        "x": {
-          "type": "number"
-        },
-        "y": {
-          "type": "number"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
     "name": "browser_dismiss_popups",
     "server": "hela-cytosol",
     "description": "Try to dismiss common popups and banners.",
@@ -8706,90 +8518,67 @@
     }
   },
   {
-    "name": "browser_click_text",
-    "server": "hela-cytosol",
-    "description": "Click an element containing specific text.",
-    "parameters": {
-      "properties": {
-        "text": {
-          "type": "string"
-        },
-        "type": {
-          "default": "any",
-          "enum": [
-            "button",
-            "link",
-            "any"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_click_ref",
-    "server": "hela-cytosol",
-    "description": "Click an element by its `ref` number from the last browser_observe or browser_get_state call. More reliable than selectors for dynamic pages — no re-snapshotting needed.",
-    "parameters": {
-      "properties": {
-        "ref": {
-          "description": "1-based ref index from the last observe/state call.",
-          "type": "number"
-        }
-      },
-      "required": [
-        "ref"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_click_nth",
-    "server": "hela-cytosol",
-    "description": "Click the Nth element matching a selector (0-based). Avoids \"strict mode violation\" when multiple elements match.",
-    "parameters": {
-      "properties": {
-        "index": {
-          "description": "0-based index of which match to click",
-          "type": "number"
-        },
-        "selector": {
-          "description": "CSS selector matching multiple elements",
-          "type": "string"
-        }
-      },
-      "required": [
-        "selector",
-        "index"
-      ],
-      "type": "object"
-    }
-  },
-  {
     "name": "browser_click",
     "server": "hela-cytosol",
-    "description": "Click an element.",
+    "description": "Click by ref, visible text, CSS selector, or x/y coordinates. Supports nth/index match, left/right/middle button, single/double click, and smart selector fallbacks. Consolidates the former click_text, click_nth, click_ref, double_click, and right_click tools.",
     "parameters": {
+      "type": "object",
       "properties": {
-        "delay": {
-          "description": "Delay between mousedown and mouseup (ms)",
-          "type": "number"
-        },
         "selector": {
-          "type": "string"
+          "type": "string",
+          "description": "CSS selector. Supports smart retry fallbacks."
+        },
+        "text": {
+          "type": "string",
+          "description": "Visible text to match."
+        },
+        "ref": {
+          "type": "number",
+          "description": "1-based ref from browser_observe or browser_get_state."
+        },
+        "nth": {
+          "type": "number",
+          "description": "0-based match index for selector or text."
+        },
+        "index": {
+          "type": "number",
+          "description": "Alias for nth."
         },
         "x": {
           "type": "number"
         },
         "y": {
           "type": "number"
+        },
+        "button": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right",
+            "middle"
+          ],
+          "default": "left"
+        },
+        "count": {
+          "type": "number",
+          "description": "Click count; use 2 for a double click.",
+          "default": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "button",
+            "link",
+            "any"
+          ],
+          "default": "any",
+          "description": "Element filter for text clicks."
+        },
+        "delay": {
+          "type": "number",
+          "description": "Delay between mousedown and mouseup (ms)."
         }
-      },
-      "type": "object"
+      }
     }
   },
   {
@@ -8923,89 +8712,46 @@
     }
   },
   {
-    "name": "browser_assert_visible",
-    "server": "hela-cytosol",
-    "description": "Check if an element is visible on the page. Returns [PASS]/[FAIL] — never throws. Use for verification without breaking flow.",
-    "parameters": {
-      "properties": {
-        "selector": {
-          "description": "CSS selector to check",
-          "type": "string"
-        }
-      },
-      "required": [
-        "selector"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_assert_url",
-    "server": "hela-cytosol",
-    "description": "Check if current URL contains a pattern. Returns [PASS]/[FAIL] — never throws.",
-    "parameters": {
-      "properties": {
-        "pattern": {
-          "description": "Substring to match in URL",
-          "type": "string"
-        }
-      },
-      "required": [
-        "pattern"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "browser_assert_text",
-    "server": "hela-cytosol",
-    "description": "Check if an element contains expected text (substring match). Returns [PASS]/[FAIL] with context — never throws.",
-    "parameters": {
-      "properties": {
-        "expected": {
-          "description": "Expected text substring",
-          "type": "string"
-        },
-        "selector": {
-          "description": "CSS selector",
-          "type": "string"
-        }
-      },
-      "required": [
-        "selector",
-        "expected"
-      ],
-      "type": "object"
-    }
-  },
-  {
     "name": "browser_assert",
     "server": "hela-cytosol",
-    "description": "Validate a condition on the current page. On failure, returns what is actually present to help re-plan. Use after actions to verify outcomes before continuing. Note: conditionType=\"js\" requires HELA_BROWSER_ALLOW_EVAL=true (R3 privilege).",
+    "description": "Validate page state: element existence/text, visibility, URL, or gated JavaScript. Returns PASS/FAIL without breaking the flow. Consolidates the former assert_visible, assert_text, and assert_url tools. type=js requires HELA_BROWSER_ALLOW_EVAL=true.",
     "parameters": {
+      "type": "object",
       "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "element",
+            "visible",
+            "text",
+            "url",
+            "js"
+          ],
+          "default": "element",
+          "description": "Assertion type."
+        },
+        "target": {
+          "type": "string",
+          "description": "CSS selector for element/visible/text, URL pattern for url, or JS expression for js."
+        },
+        "expected": {
+          "type": "string",
+          "description": "Expected text for type=text or optional text for type=element."
+        },
         "condition": {
-          "description": "What to check — either a CSS selector that must exist, a URL pattern to match, or a JS expression returning a boolean.",
-          "type": "string"
+          "type": "string",
+          "description": "Legacy alias for target."
         },
         "conditionType": {
-          "default": "selector",
+          "type": "string",
           "enum": [
             "selector",
             "url",
             "js"
           ],
-          "type": "string"
-        },
-        "expected": {
-          "description": "For selector: optional text the element must contain. For url: pattern to match. For js: ignored (expression must return truthy).",
-          "type": "string"
+          "description": "Legacy alias for type."
         }
-      },
-      "required": [
-        "condition"
-      ],
-      "type": "object"
+      }
     }
   },
   {
