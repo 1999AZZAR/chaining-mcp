@@ -86,6 +86,58 @@ describe('capability graph (P1-C4)', () => {
   });
 });
 
+describe('Phase 2 canonical responsibility boundaries', () => {
+  const SEARCH = [T('browser_search', 'browser'), T('google_search', 'researcher'), T('execute_command', 'terminal')];
+  const EXTRACT = [T('browser_get_page_markdown', 'browser'), T('extract_content', 'researcher')];
+  const READ = [T('read_file', 'filesystem'), T('terminal_cat', 'terminal')];
+  const DB = [T('execute_sql', 'project'), T('query_data', 'project'), T('opencode_db', 'menager')];
+
+  test('web search prefers google_search and drops browser_search for factual lookups', () => {
+    const r = scopeToolsForTask(SEARCH, 'search google for latest AI news');
+    assert.equal(r.scoped, true);
+    assert.deepEqual(r.tools.map(t => t.name), ['google_search']);
+  });
+
+  test('browser_search survives only for visual browser workflows, after the canonical tool', () => {
+    const r = scopeToolsForTask(SEARCH, 'search inside the visual browser page and click the first result');
+    const names = r.tools.map(t => t.name);
+    assert.ok(names.includes('browser_search'), `[${names}] should keep browser_search`);
+    assert.ok(names.indexOf('google_search') < names.indexOf('browser_search'), `[${names}] canonical must rank first`);
+  });
+
+  test('content extraction prefers extract_content unless JS rendering is required', () => {
+    const http = scopeToolsForTask(EXTRACT, 'search and extract text from the webpage');
+    assert.deepEqual(http.tools.map(t => t.name), ['extract_content']);
+
+    const js = scopeToolsForTask(EXTRACT, 'search and extract text from the javascript-rendered webpage');
+    const names = js.tools.map(t => t.name);
+    assert.ok(names.includes('browser_get_page_markdown'), `[${names}] should keep JS extraction`);
+    assert.ok(names.indexOf('extract_content') < names.indexOf('browser_get_page_markdown'), `[${names}] canonical must rank first`);
+  });
+
+  test('local file reads prefer read_file; terminal_cat stays for remote SSH only', () => {
+    const local = scopeToolsForTask(READ, 'read the local config file and run a shell command');
+    assert.deepEqual(local.tools.map(t => t.name), ['read_file']);
+
+    const remote = scopeToolsForTask(READ, 'ssh into the remote server and cat the log file');
+    const names = remote.tools.map(t => t.name);
+    assert.ok(names.includes('terminal_cat'), `[${names}] should keep remote terminal_cat`);
+    assert.ok(names.indexOf('read_file') < names.indexOf('terminal_cat'), `[${names}] canonical must rank first`);
+  });
+
+  test('memory DB inspection prefers genome tools; opencode_db stays for OpenCode sessions', () => {
+    const memoryOnly = scopeToolsForTask(DB, 'inspect the project memory database and run a shell command');
+    const names = memoryOnly.tools.map(t => t.name);
+    assert.ok(names.includes('execute_sql') && names.includes('query_data'), `[${names}] genome tools must stay`);
+    assert.ok(!names.includes('opencode_db'), `[${names}] opencode_db must drop without an OpenCode signal`);
+
+    const opencode = scopeToolsForTask(DB, 'inspect the project memory database and the opencode session db');
+    const mixed = opencode.tools.map(t => t.name);
+    assert.ok(mixed.includes('opencode_db'), `[${mixed}] opencode_db must stay for OpenCode`);
+    assert.ok(mixed.indexOf('execute_sql') < mixed.indexOf('opencode_db'), `[${mixed}] canonical must rank first`);
+  });
+});
+
 describe('agentRun capabilityRouting', () => {
   const scriptProvider = (texts) => {
     let i = 0;

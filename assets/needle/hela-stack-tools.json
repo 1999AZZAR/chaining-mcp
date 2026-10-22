@@ -1672,7 +1672,7 @@
   {
     "name": "session_list",
     "server": "hela-ribosome",
-    "description": "Lists all active and completed sessions managed by the server.",
+    "description": "Lists all active and completed interactive PTY sessions managed by this server.",
     "parameters": {
       "properties": {},
       "required": [],
@@ -1728,7 +1728,7 @@
   {
     "name": "session_close",
     "server": "hela-ribosome",
-    "description": "Kills and removes a session, freeing its memory.",
+    "description": "Kills and removes an interactive PTY session managed by this server, freeing its memory.",
     "parameters": {
       "properties": {
         "sessionId": {
@@ -1898,7 +1898,7 @@
   {
     "name": "opencode_db",
     "server": "hela-ribosome",
-    "description": "Query the opencode database (opencode db [query]). Read with no query prints the db path context.",
+    "description": "Restricted to OpenCode session database inspection; use hela-genome execute_sql/query_data for the HeLa memory graph. Query the opencode database (opencode db [query]). Read with no query prints the db path context.",
     "parameters": {
       "properties": {
         "format": {
@@ -3736,7 +3736,7 @@
   {
     "name": "terminal_cat",
     "server": "hela-nucleus",
-    "description": "Read file contents safely on remote or local hosts.",
+    "description": "Restricted to remote SSH targets. Read remote file contents safely; use hela-membrane read_file for local files.",
     "parameters": {
       "properties": {
         "host": {
@@ -3827,7 +3827,7 @@
     }
   },
   {
-    "name": "session_close",
+    "name": "terminal_session_close",
     "server": "hela-nucleus",
     "description": "Close and disconnect an active terminal session, releasing its session slot. Accepts a session name (e.g. \"default\", \"build\"), session key (e.g. \"local-default\"), or \"all\" to close all active sessions.",
     "parameters": {
@@ -3849,7 +3849,7 @@
     }
   },
   {
-    "name": "session_list",
+    "name": "terminal_session_list",
     "server": "hela-nucleus",
     "description": "List all active local and remote terminal sessions, showing session keys, working directories, active environment variables, last activity timestamps, and capacity.",
     "parameters": {
@@ -4889,7 +4889,7 @@
   {
     "name": "read_file",
     "server": "hela-membrane",
-    "description": "Read file content with optional encoding and range",
+    "description": "Canonical local file read (use instead of hela-nucleus terminal_cat). Read file content with optional encoding and range",
     "parameters": {
       "properties": {
         "encoding": {
@@ -5538,7 +5538,7 @@
   {
     "name": "query_data",
     "server": "hela-genome",
-    "description": "Query data from project or central memory tables (database: 'project' | 'central', default 'project')",
+    "description": "Canonical memory-graph table query (use instead of hela-ribosome opencode_db). Query data from project or central memory tables (database: 'project' | 'central', default 'project')",
     "parameters": {
       "properties": {
         "conditions": {
@@ -5907,7 +5907,7 @@
   {
     "name": "execute_sql",
     "server": "hela-genome",
-    "description": "Execute raw SQL query on the project or central memory database (database: 'project' | 'central', default 'project')",
+    "description": "Canonical memory-graph SQL inspection (use instead of hela-ribosome opencode_db). Execute raw SQL query on the project or central memory database (database: 'project' | 'central', default 'project')",
     "parameters": {
       "properties": {
         "database": {
@@ -6895,7 +6895,7 @@
   {
     "name": "google_search",
     "server": "hela-enzyme",
-    "description": "Search the web using Google Custom Search API with automatic zero-key multi-engine fallback",
+    "description": "Canonical web search: Google Custom Search API. Use for factual lookups; prefer over browser-scoped search.",
     "parameters": {
       "properties": {
         "num": {
@@ -6936,7 +6936,7 @@
   {
     "name": "extract_content",
     "server": "hela-enzyme",
-    "description": "Extract main content from a web page",
+    "description": "Canonical content extraction: fetch a URL and extract its main content. Use browser_get_page_markdown only when client-side JavaScript is required.",
     "parameters": {
       "properties": {
         "url": {
@@ -7586,7 +7586,7 @@
   {
     "name": "browser_search",
     "server": "hela-cytosol",
-    "description": "Search the web using DuckDuckGo (no CAPTCHA). Returns search results. Use this instead of navigating to Google directly.",
+    "description": "Restricted to visual browser workflows (not general factual lookups); prefer hela-enzyme google_search. Search the web using DuckDuckGo (no CAPTCHA). Returns search results.",
     "parameters": {
       "properties": {
         "query": {
@@ -8292,7 +8292,7 @@
   {
     "name": "browser_get_page_markdown",
     "server": "hela-cytosol",
-    "description": "Extract page content as structured markdown (headings, lists, tables, links). Better than raw text for reading comprehension.",
+    "description": "Restricted to content that requires client-side JavaScript; prefer hela-enzyme extract_content for static pages. Extract page content as structured markdown (headings, lists, tables, links).",
     "parameters": {
       "properties": {
         "maxLength": {

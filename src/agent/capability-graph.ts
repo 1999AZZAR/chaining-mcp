@@ -60,7 +60,7 @@ export const HELA_CAPABILITIES: HelaCapability[] = [
     name: 'browser.observe',
     description: 'Observe pages: state, text, screenshots, a11y (R0)',
     servers: ['browser', 'cytosol'],
-    toolPatterns: ['get_state', 'get_text', 'get_visible', 'screenshot', 'observe', 'accessibility', 'extract', 'console', 'network', 'performance', 'health'],
+    toolPatterns: ['get_state', 'get_text', 'get_visible', 'screenshot', 'observe', 'accessibility', 'extract_(schema|table)', 'console', 'network', 'performance', 'health'],
     keywords: ['screenshot', 'webpage', 'website', 'page', 'observe page', 'what does', 'scrape', 'extract text'],
   },
   {
@@ -135,6 +135,105 @@ export const CAPABILITY_TRANSITIONS: Record<string, string[]> = {
 
 export interface ToolDecl { name: string; description?: string; schema?: unknown; server?: string }
 
+/**
+ * Phase 2 (v1.2.0): canonical responsibility boundaries for overlapping tools.
+ * The canonical tool is preferred whenever both sides of an overlap are in
+ * scope; the restricted tool is kept only when the task signals its specific
+ * niche (visual browser work, JS-rendered content, remote SSH, OpenCode DB).
+ */
+export interface CanonicalToolGroup {
+  id: string;
+  canonical: string[];
+  restricted: Array<{ tool: string; reason: string; allowWhen: RegExp }>;
+}
+
+export const CANONICAL_TOOL_GROUPS: CanonicalToolGroup[] = [
+  {
+    id: 'web.search',
+    canonical: ['google_search'],
+    restricted: [
+      {
+        tool: 'browser_search',
+        reason: 'visual browser workflow only; use hela-enzyme google_search for factual lookups',
+        allowWhen: /\b(browser|visual|captcha|screenshot|playwright|navigate|click|form|login|javascript|js|spa)\b/i,
+      },
+    ],
+  },
+  {
+    id: 'content.extract',
+    canonical: ['extract_content'],
+    restricted: [
+      {
+        tool: 'browser_get_page_markdown',
+        reason: 'only when the page requires client-side JavaScript; use hela-enzyme extract_content otherwise',
+        allowWhen: /\b(browser|javascript|js|client-side|spa|dynamic|rendered|dom|playwright)\b/i,
+      },
+    ],
+  },
+  {
+    id: 'filesystem.local_read',
+    canonical: ['read_file'],
+    restricted: [
+      {
+        tool: 'terminal_cat',
+        reason: 'remote SSH targets only; use hela-membrane read_file for local files',
+        allowWhen: /\b(remote|ssh|vps|host|server)\b/i,
+      },
+    ],
+  },
+  {
+    id: 'project.db_inspect',
+    canonical: ['execute_sql', 'query_data'],
+    restricted: [
+      {
+        tool: 'opencode_db',
+        reason: 'OpenCode session database only; use hela-genome execute_sql/query_data for the HeLa memory graph',
+        allowWhen: /\b(opencode|session[ _-]?(db|database)|harness[ _-]?(db|database))\b/i,
+      },
+    ],
+  },
+];
+
+/**
+ * Deterministic canonical ordering for a tool list. When filterRestricted is
+ * true (capability scoping active), restricted alternatives are dropped unless
+ * the task text matches their allowWhen niche signal. Tool names are unique
+ * ecosystem-wide after the Phase 1 zero-collision rename, so matching by name
+ * is unambiguous.
+ */
+export function orderCanonicalTools<T extends ToolDecl>(tools: T[], task: string, filterRestricted = false): T[] {
+  const names = new Set(tools.map(t => t.name));
+  const active = CANONICAL_TOOL_GROUPS.filter(
+    g => g.canonical.some(n => names.has(n)) && g.restricted.some(r => names.has(r.tool))
+  );
+  if (active.length === 0) return tools;
+
+  const canonical = new Set<string>();
+  const restricted = new Map<string, { reason: string; allowWhen: RegExp }>();
+  for (const group of active) {
+    group.canonical.forEach(n => canonical.add(n));
+    for (const r of group.restricted) {
+      if (names.has(r.tool)) restricted.set(r.tool, r);
+    }
+  }
+
+  const text = task || '';
+  const dropped = new Set<string>();
+  if (filterRestricted) {
+    for (const [name, rule] of restricted) {
+      if (!rule.allowWhen.test(text)) dropped.add(name);
+    }
+  }
+
+  const rank = (name: string) => canonical.has(name) ? 0 : restricted.has(name) ? 2 : 1;
+  return tools
+    .map((tool, index) => ({ tool, index }))
+    .filter(({ tool }) => !dropped.has(tool.name))
+    .sort((a, b) => rank(a.tool.name) - rank(b.tool.name) || a.index - b.index)
+    .map(({ tool }) => tool);
+}
+
+
 const STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'this', 'that', 'what', 'which',
   'into', 'over', 'under', 'about', 'after', 'before', 'than', 'more',
@@ -186,7 +285,21 @@ export function capabilityMatchesTool(cap: HelaCapability, serverName: string, t
  *  Two passes: tool-name patterns first (precise: `write_file` is a write
  *  even on the filesystem server), server hints second (broad grouping),
  *  Needle family fallback last. */
+const EXPLICIT_TOOL_CAPABILITY: Record<string, string> = {
+  extract_content: 'research.search',
+  google_search: 'research.search',
+  browser_search: 'research.search',
+  browser_get_page_markdown: 'browser.observe',
+  read_file: 'filesystem.read',
+  terminal_cat: 'terminal.execute',
+  execute_sql: 'project.query',
+  query_data: 'project.query',
+  opencode_db: 'terminal.execute',
+};
+
 export function capabilityOfTool(serverName: string, toolName: string): string {
+  const explicit = EXPLICIT_TOOL_CAPABILITY[toolName];
+  if (explicit) return explicit;
   for (const cap of HELA_CAPABILITIES) {
     if (compiled(cap).some(re => re.test(toolName))) return cap.name;
   }
@@ -477,13 +590,13 @@ export function scopeToolsForTask<T extends ToolDecl>(
 ): ScopeResult & { tools: T[] } {
   const opts: ScopeOptions = typeof options === 'number' ? { maxCaps: options } : (options || {});
   const caps = selectCapabilitiesForTask(task, opts);
-  if (caps.length === 0) return { tools, scoped: false, capabilities: [] };
+  if (caps.length === 0) return { tools: orderCanonicalTools(tools, task), scoped: false, capabilities: [] };
   const keep = tools.filter(t => {
     const cap = capabilityOfTool(t.server || '', t.name);
     return caps.includes(cap);
   });
-  if (keep.length === 0) return { tools, scoped: false, capabilities: caps };
-  return { tools: keep, scoped: true, capabilities: caps };
+  if (keep.length === 0) return { tools: orderCanonicalTools(tools, task), scoped: false, capabilities: caps };
+  return { tools: orderCanonicalTools(keep, task, true), scoped: true, capabilities: caps };
 }
 
 /** Rendered prompt-list size (same `- name: desc` render as the loop). */
