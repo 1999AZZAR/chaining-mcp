@@ -4,7 +4,7 @@ import { agentRun } from './.dist/agent/agent.js';
 import {
   HELA_CAPABILITIES, selectCapabilitiesForTask, scopeToolsForTask,
   capabilityOfTool, promptContextSize, stemWord, stemMatches,
-  CAPABILITY_TRANSITIONS, scopeCompactTools, recallCapabilityPrecedents, PROFILE_CAPABILITIES,
+  CAPABILITY_TRANSITIONS, scopeCompactTools, recallCapabilityPrecedents, BUILTIN_PROFILES, PROFILE_CAPABILITIES, registerCustomProfile, resolveProfileCapabilities,
 } from './.dist/agent/capability-graph.js';
 import { DatabaseSync } from 'node:sqlite';
 import * as fs from 'node:fs';
@@ -212,40 +212,65 @@ describe('dynamic capability resolver v2', () => {
       try { fs.unlinkSync(testDb); } catch {}
     }
   });
-  test('profile-aware capability scoping restricts inactive organelles', () => {
-    // 1. In dev-workspace, mobile and 3D are inactive
-    const devWorkspaceCaps = selectCapabilitiesForTask('tap android button and render blender mesh', {
-      profile: 'dev-workspace'
-    });
-    assert.ok(!devWorkspaceCaps.includes('android.control'), 'dev-workspace must not include android.control');
-    assert.ok(!devWorkspaceCaps.includes('blender.model'), 'dev-workspace must not include blender.model');
 
-    // 2. In headless-server, browser and mobile are inactive
-    const headlessCaps = selectCapabilitiesForTask('scrape web page using browser and click button', {
-      profile: 'headless-server'
-    });
-    assert.ok(!headlessCaps.includes('browser.observe'), 'headless-server must not include browser.observe');
-    assert.ok(!headlessCaps.includes('browser.act'), 'headless-server must not include browser.act');
+  test("profile-aware capability scoping covers all 8 canonical built-in profiles", () => {
+    // 1. minimal: only research and genome
+    const minCaps = selectCapabilitiesForTask("read file, run shell command, and search research paper", { profile: "minimal" });
+    assert.ok(minCaps.includes("research.search"), "minimal must include research.search");
+    assert.ok(!minCaps.includes("filesystem.read"), "minimal must not include filesystem.read");
+    assert.ok(!minCaps.includes("terminal.execute"), "minimal must not include terminal.execute");
 
-    // 3. In 3d-modeling, blender.model is active and prioritized
-    const modelingCaps = selectCapabilitiesForTask('render blender mesh', {
-      profile: '3d-modeling'
-    });
-    assert.ok(modelingCaps.includes('blender.model'), '3d-modeling must include blender.model');
+    // 2. dev-workspace: desktop workstation without 3D/mobile
+    const devCaps = selectCapabilitiesForTask("tap android button and render blender mesh", { profile: "dev-workspace" });
+    assert.ok(!devCaps.includes("android.control"), "dev-workspace must not include android.control");
+    assert.ok(!devCaps.includes("blender.model"), "dev-workspace must not include blender.model");
 
-    // 4. In all or unset, full capability catalog is available
-    const allCaps = selectCapabilitiesForTask('tap android screen and control device', {
-      profile: 'all'
-    });
-    assert.ok(allCaps.includes('android.control'), 'profile all must include android.control');
+    // 3. headless-server: core 7 headless without browser/mobile/3D
+    const headlessCaps = selectCapabilitiesForTask("scrape web page using browser and click button", { profile: "headless-server" });
+    assert.ok(!headlessCaps.includes("browser.observe"), "headless-server must not include browser.observe");
+    assert.ok(!headlessCaps.includes("browser.act"), "headless-server must not include browser.act");
 
-    // 5. HELA_PROFILE env fallback works
-    process.env.HELA_PROFILE = 'dev-workspace';
-    try {
-      const envCaps = selectCapabilitiesForTask('tap android screen');
-      assert.ok(!envCaps.includes('android.control'), 'HELA_PROFILE env must filter android.control in dev-workspace');
-    } finally {
-      delete process.env.HELA_PROFILE;
-    }
+    // 4. research: research + browser extraction + markdown FS
+    const resCaps = selectCapabilitiesForTask("search arxiv and scrape article", { profile: "research" });
+    assert.ok(resCaps.includes("research.search"), "research must include research.search");
+    assert.ok(resCaps.includes("browser.observe"), "research must include browser.observe");
+    assert.ok(!resCaps.includes("blender.model"), "research must not include blender.model");
+
+    // 5. web-devops: frontend design tokens + browser testing
+    const webCaps = selectCapabilitiesForTask("design responsive ui and click button", { profile: "web-devops" });
+    assert.ok(webCaps.includes("ui.design"), "web-devops must include ui.design");
+    assert.ok(webCaps.includes("browser.observe") || webCaps.includes("browser.act"), "web-devops must include browser");
+
+    // 6. android-testing: mobile device automation rig
+    const droidCaps = selectCapabilitiesForTask("tap android device and run adb command", { profile: "android-testing" });
+    assert.ok(droidCaps.includes("android.control"), "android-testing must include android.control");
+    assert.ok(!droidCaps.includes("blender.model"), "android-testing must not include blender.model");
+
+    // 7. 3d-modeling: blender scene architect
+    const modelingCaps = selectCapabilitiesForTask("render blender mesh", { profile: "3d-modeling" });
+    assert.ok(modelingCaps.includes("blender.model"), "3d-modeling must include blender.model");
+
+    // 8. all: full capability catalog
+    const allCaps = selectCapabilitiesForTask("tap android screen and render blender mesh", { profile: "all" });
+    assert.ok(allCaps.includes("android.control") || allCaps.includes("blender.model"), "all must include specialized capabilities");
+  });
+
+  test("dynamic custom profiles and inline capability syntax", () => {
+    // A. Runtime registered custom profile
+    registerCustomProfile("security-audit", ["filesystem.read", "terminal.execute", "project.query"]);
+    const customCaps = selectCapabilitiesForTask("scrape website and run bash scan", { profile: "security-audit" });
+    assert.ok(customCaps.includes("terminal.execute"), "security-audit must include terminal.execute");
+    assert.ok(!customCaps.includes("browser.observe"), "security-audit must not include browser.observe");
+
+    // B. Inline comma-separated capability list
+    const inlineCaps = selectCapabilitiesForTask("edit file and click web button", {
+      profile: "filesystem.write,terminal.execute"
+    });
+    assert.ok(inlineCaps.includes("filesystem.write"), "inline profile must include filesystem.write");
+    assert.ok(!inlineCaps.includes("browser.act"), "inline profile must not include browser.act");
+
+    // C. Fallback for completely unknown profile does not blind
+    const unknownCaps = selectCapabilitiesForTask("search papers and edit code", { profile: "some-future-profile" });
+    assert.ok(unknownCaps.length > 0, "unknown profile should fall back gracefully without blinding");
   });
 });

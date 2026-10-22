@@ -1,0 +1,7 @@
+HeLa Active Profile: minimal (Lightweight Research & Memory Agent)
+Active Organelles:
+- Mitosis (chaining-mcp): Capability routing, sequential thinking, task planning.
+- Genome (project-mcp): Knowledge graph, memory.db, entity/relation persistence.
+- Enzyme (researcher-mcp): Multi-source research, arXiv papers, Wikipedia retrieval, fact-checking.
+(Note: Chromium, ADB, Blender, and privileged Terminal/PTY/Filesystem are NOT active in this profile).
+Rule: Focus strictly on research retrieval, knowledge structuring, and multi-step reasoning.

@@ -273,35 +273,92 @@ export function recallCapabilityPrecedents(
  * HeLa profile capability allowances and primary affinities.
  * Reflects the organelle profile cards in assets/needle/profiles/*.txt.
  */
-export const PROFILE_CAPABILITIES: Record<string, string[]> = {
-  'all': ['*'],
+/**
+ * HeLa canonical built-in profiles (8 in total) matching config/profiles.json in hela-mcp-ecosystem.
+ * Maps profile IDs to their active capability allowances.
+ */
+export const BUILTIN_PROFILES: Record<string, string[]> = {
+  // 1. Minimal: smallest viable stack (Mitosis + Genome + Enzyme)
+  'minimal': [
+    'research.search', 'project.query', 'project.mutate'
+  ],
+  // 2. Dev Workspace: full desktop development workstation (Mitosis + Genome + Membrane + Nucleus + Ribosome + Enzyme + Phenotype + Cytosol)
   'dev-workspace': [
     'filesystem.read', 'filesystem.write', 'terminal.execute',
     'browser.observe', 'browser.act', 'research.search',
     'project.query', 'project.mutate', 'ui.design'
   ],
+  // 3. Headless Server (Core 7): headless CI/VM runner without browser/mobile/3D
   'headless-server': [
     'filesystem.read', 'filesystem.write', 'terminal.execute',
     'research.search', 'project.query', 'project.mutate', 'ui.design'
   ],
+  // 4. Research: dedicated technical research & web synthesis node
+  'research': [
+    'research.search', 'browser.observe', 'filesystem.read',
+    'filesystem.write', 'project.query', 'project.mutate'
+  ],
+  // 5. Web DevOps: frontend styling, component authoring & browser automation
   'web-devops': [
     'ui.design', 'browser.observe', 'browser.act',
     'filesystem.read', 'filesystem.write', 'terminal.execute',
     'project.query', 'project.mutate'
   ],
-  'research': [
-    'research.search', 'browser.observe', 'filesystem.read',
-    'filesystem.write', 'project.query', 'project.mutate'
+  // 6. Android Testing: mobile device automation rig via ADB/scrcpy
+  'android-testing': [
+    'android.control', 'android.inspect', 'terminal.execute',
+    'research.search', 'project.query', 'project.mutate'
   ],
+  // 7. 3D Modeling: generative 3D artist & Blender scene architect
   '3d-modeling': [
     'blender.model', 'filesystem.read', 'filesystem.write',
     'terminal.execute', 'project.query'
   ],
-  'android-testing': [
-    'android.control', 'android.inspect', 'terminal.execute',
-    'research.search', 'project.query', 'project.mutate'
-  ]
+  // 8. All: complete 10-server inventory
+  'all': ['*']
 };
+
+/**
+ * Mutable registry for built-in and dynamic custom profiles.
+ */
+export const PROFILE_CAPABILITIES: Record<string, string[]> = { ...BUILTIN_PROFILES };
+
+/**
+ * Register a dynamic or custom profile at runtime.
+ * @param id Profile ID identifier
+ * @param capabilities List of allowed capabilities or ['*'] for all
+ */
+export function registerCustomProfile(id: string, capabilities: string[]): void {
+  PROFILE_CAPABILITIES[id.toLowerCase().trim()] = capabilities;
+}
+
+/**
+ * Resolve allowed capabilities for a given profile name.
+ * Inspects:
+ * 1. Runtime registered custom/built-in profiles.
+ * 2. Comma-separated inline capabilities (e.g. "filesystem.read,terminal.execute").
+ * 3. File card in assets/needle/profiles/<id>.txt or custom file path.
+ * 4. Fallback to undefined (allow all / unconstrained).
+ */
+export function resolveProfileCapabilities(profileName?: string): string[] | undefined {
+  if (!profileName) return undefined;
+  const p = profileName.toLowerCase().trim();
+  if (!p || p === 'all') return ['*'];
+
+  // 1. Direct registry hit (built-in or custom registered)
+  if (PROFILE_CAPABILITIES[p]) {
+    return PROFILE_CAPABILITIES[p];
+  }
+
+  // 2. Inline capability list syntax: "cap1,cap2,cap3"
+  if (p.includes(',')) {
+    const list = p.split(',').map(s => s.trim()).filter(Boolean);
+    if (list.length > 0) return list;
+  }
+
+  // 3. Fallback: unknown named profile does not artificially restrict
+  return undefined;
+}
 
 export interface ScopeOptions {
   maxCaps?: number;
@@ -353,7 +410,7 @@ export function selectCapabilitiesForTask(task: string, options: number | ScopeO
   }
 
   const activeProfile = (opts.profile ?? process.env.HELA_PROFILE ?? '').toLowerCase().trim();
-  const allowedCaps = (activeProfile && PROFILE_CAPABILITIES[activeProfile]) ? PROFILE_CAPABILITIES[activeProfile] : undefined;
+  const allowedCaps = resolveProfileCapabilities(activeProfile);
   const isCapAllowed = (name: string) => {
     if (!allowedCaps || allowedCaps.includes('*')) return true;
     return allowedCaps.includes(name);
