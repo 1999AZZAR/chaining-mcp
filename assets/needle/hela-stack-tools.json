@@ -6312,72 +6312,65 @@
     }
   },
   {
-    "name": "wikipedia_search_nearby",
-    "server": "hela-enzyme",
-    "description": "Find Wikipedia articles near specific coordinates",
-    "parameters": {
-      "properties": {
-        "lang": {
-          "default": "en",
-          "description": "Language code",
-          "type": "string"
-        },
-        "lat": {
-          "description": "Latitude coordinate (-90 to 90)",
-          "maximum": 90,
-          "minimum": -90,
-          "type": "number"
-        },
-        "limit": {
-          "default": 10,
-          "description": "Maximum number of results",
-          "maximum": 50,
-          "minimum": 1,
-          "type": "number"
-        },
-        "lon": {
-          "description": "Longitude coordinate (-180 to 180)",
-          "maximum": 180,
-          "minimum": -180,
-          "type": "number"
-        },
-        "radius": {
-          "default": 1000,
-          "description": "Search radius in meters",
-          "maximum": 10000,
-          "minimum": 1,
-          "type": "number"
-        }
-      },
-      "required": [
-        "lat",
-        "lon"
-      ],
-      "type": "object"
-    }
-  },
-  {
     "name": "wikipedia_search",
     "server": "hela-enzyme",
-    "description": "Search Wikipedia articles",
+    "description": "Search Wikipedia by text query, multiple queries, or coordinates. Exactly one of query, queries, or coord is required. Nearby searches honour radius (metres).",
     "parameters": {
+      "type": "object",
       "properties": {
-        "limit": {
-          "default": 5,
-          "description": "Number of results (1-10)",
-          "maximum": 10,
-          "minimum": 1,
-          "type": "number"
-        },
         "query": {
-          "description": "Search query",
-          "type": "string"
+          "type": "string",
+          "description": "Single search query."
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 10,
+          "description": "Multiple search queries (max 10)."
+        },
+        "coord": {
+          "type": "object",
+          "properties": {
+            "lat": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "lon": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          "required": [
+            "lat",
+            "lon"
+          ],
+          "description": "Coordinates for a geosearch."
+        },
+        "lang": {
+          "type": "string",
+          "description": "Language code",
+          "default": "en"
+        },
+        "limit": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Results per query (max 10), or nearby results (max 50).",
+          "default": 5
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Nearby search radius in metres.",
+          "default": 1000
         }
-      },
-      "required": [
-        "query"
-      ],
-      "type": "object"
+      }
     }
   },
   {
@@ -6399,28 +6392,6 @@
     "name": "wikipedia_page_languages",
     "server": "hela-enzyme",
     "description": "Get the languages a Wikipedia page is available in",
-    "parameters": {
-      "properties": {
-        "lang": {
-          "default": "en",
-          "description": "Language code",
-          "type": "string"
-        },
-        "title": {
-          "description": "Page title",
-          "type": "string"
-        }
-      },
-      "required": [
-        "title"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "wikipedia_get_summary",
-    "server": "hela-enzyme",
-    "description": "Get a brief summary of a Wikipedia page",
     "parameters": {
       "properties": {
         "lang": {
@@ -6479,104 +6450,45 @@
     }
   },
   {
-    "name": "wikipedia_get_page_by_id",
+    "name": "wikipedia_get",
     "server": "hela-enzyme",
-    "description": "Get Wikipedia page content by ID",
+    "description": "Get Wikipedia content by title, page ID, or multiple titles. Use format=summary for a short extract, format=full for cleaned article text. Exactly one of title, pageId, or titles is required.",
     "parameters": {
-      "properties": {
-        "id": {
-          "description": "Page ID",
-          "minimum": 1,
-          "type": "integer"
-        },
-        "lang": {
-          "default": "en",
-          "description": "Language code",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "wikipedia_get_page",
-    "server": "hela-enzyme",
-    "description": "Get Wikipedia page content",
-    "parameters": {
+      "type": "object",
       "properties": {
         "title": {
-          "description": "Page title",
-          "type": "string"
-        }
-      },
-      "required": [
-        "title"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "wikipedia_batch_search",
-    "server": "hela-enzyme",
-    "description": "Search multiple queries at once for efficiency",
-    "parameters": {
-      "properties": {
-        "lang": {
-          "default": "en",
-          "description": "Language code",
-          "type": "string"
+          "type": "string",
+          "description": "Page title (exactly one of title, pageId, or titles)."
         },
-        "limit": {
-          "default": 5,
-          "description": "Maximum number of results per query",
-          "maximum": 20,
+        "pageId": {
+          "type": "integer",
           "minimum": 1,
-          "type": "number"
-        },
-        "queries": {
-          "description": "Array of search queries",
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 10,
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "queries"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "wikipedia_batch_get_pages",
-    "server": "hela-enzyme",
-    "description": "Get multiple Wikipedia pages at once for efficiency",
-    "parameters": {
-      "properties": {
-        "lang": {
-          "default": "en",
-          "description": "Language code",
-          "type": "string"
+          "description": "Wikipedia page ID."
         },
         "titles": {
-          "description": "Array of page titles",
+          "type": "array",
           "items": {
             "type": "string"
           },
-          "maxItems": 10,
           "minItems": 1,
-          "type": "array"
+          "maxItems": 10,
+          "description": "Multiple page titles (max 10)."
+        },
+        "lang": {
+          "type": "string",
+          "description": "Language code",
+          "default": "en"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "summary",
+            "full"
+          ],
+          "description": "summary returns a three-sentence extract; full returns cleaned article text.",
+          "default": "full"
         }
-      },
-      "required": [
-        "titles"
-      ],
-      "type": "object"
+      }
     }
   },
   {
