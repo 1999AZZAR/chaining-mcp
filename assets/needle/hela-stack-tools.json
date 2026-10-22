@@ -1,53 +1,1161 @@
 [
   {
-    "name": "stitch_url",
-    "server": "stitch",
-    "description": "Returns the canonical Stitch Canvas web URL for a project or screen with zero network I/O. Mirrors `stitch url <resource> <id>`. Use when the user asks for a link ('open in Stitch', 'get canvas URL', 'link to screen') instead of guessing stitch.google.com URLs. Returns { resource, id, url, verified: false }.",
+    "name": "generate_rules",
+    "server": "hela-phenotype",
+    "description": "Generate design rules for a style + palette + optional archetype/hybrid. IMPORTANT: Run evaluate_style first to determine the best style for your product context. Only use this tool after evaluation confirms the style choice.",
     "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
       "properties": {
-        "id": {
-          "description": "ID of the project or screen (accepts a bare ID or a full resource name like 'projects/<p>/screens/<s>').",
-          "minLength": 1,
+        "style": {
+          "type": "string",
+          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3"
+        },
+        "palette": {
+          "type": "string",
+          "description": "Color palette: pastel|dark|vibrant|mono"
+        },
+        "archetype": {
+          "type": "string",
+          "description": "Optional page archetype: dashboard|settings|table-detail|marketing-hero|editorial-landing"
+        },
+        "hybrid": {
+          "type": "string",
+          "description": "Optional secondary system for hybrid mode"
+        },
+        "tailwind": {
+          "type": "boolean",
+          "description": "Include Tailwind CSS rules"
+        }
+      },
+      "required": [
+        "style",
+        "palette"
+      ]
+    }
+  },
+  {
+    "name": "list_options",
+    "server": "hela-phenotype",
+    "description": "List all available design systems, palettes, archetypes, and valid hybrid combinations.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "validate_combo",
+    "server": "hela-phenotype",
+    "description": "Validate a style + palette + optional hybrid combination before generating rules.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "style": {
           "type": "string"
         },
-        "project": {
-          "description": "Project ID that owns the screen (required when resource='screen' and 'id' is not a full 'projects/<p>/screens/<s>' resource name).",
+        "palette": {
           "type": "string"
         },
-        "resource": {
-          "description": "Stitch Canvas resource type to construct a URL for (project or screen).",
-          "enum": [
-            "project",
-            "screen"
-          ],
+        "hybrid": {
           "type": "string"
         }
       },
       "required": [
-        "resource",
-        "id"
-      ],
-      "type": "object"
+        "style",
+        "palette"
+      ]
+    }
+  },
+  {
+    "name": "get_reference",
+    "server": "hela-phenotype",
+    "description": "Return the full content of a reference document by name (e.g. 'ant-design', 'accessibility', 'design-tokens', 'getdesign-md').",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Reference file name without .md extension"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "palette_fetch",
+    "server": "hela-phenotype",
+    "description": "Fetch live color palettes from Color Hunt.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "trending",
+            "popular",
+            "random",
+            "theme",
+            "query"
+          ],
+          "description": "Fetch mode"
+        },
+        "theme": {
+          "type": "string",
+          "description": "Theme name (when mode=theme)"
+        },
+        "query": {
+          "type": "string",
+          "description": "Search query (when mode=query)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Number of palettes (default 5)"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "css",
+            "tailwind"
+          ],
+          "description": "Output format (default json)"
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    }
+  },
+  {
+    "name": "palette_convert",
+    "server": "hela-phenotype",
+    "description": "Convert palette JSON from palette_fetch into CSS, Tailwind, SCSS, Figma tokens, Android XML, or Swift.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "palettes": {
+          "type": "array",
+          "description": "Palette array from palette_fetch JSON output"
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "css",
+            "tailwind",
+            "scss",
+            "figma",
+            "android",
+            "swift"
+          ],
+          "description": "Output format"
+        }
+      },
+      "required": [
+        "palettes",
+        "target"
+      ]
+    }
+  },
+  {
+    "name": "brand_fetch_design_md",
+    "server": "hela-phenotype",
+    "description": "Download and return the DESIGN.md for a real brand (stripe, vercel, linear, notion, claude, tesla, etc.).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "brand": {
+          "type": "string",
+          "description": "Brand slug, e.g. 'stripe', 'vercel', 'linear.app', 'claude'"
+        }
+      },
+      "required": [
+        "brand"
+      ]
+    }
+  },
+  {
+    "name": "generate_tailwind_config",
+    "server": "hela-phenotype",
+    "description": "Generate a ready-to-use tailwind.config.js for a design style + palette combination. Returns the full config object and module.exports code string.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3"
+        },
+        "palette": {
+          "type": "string",
+          "description": "Color palette: pastel|dark|vibrant|mono"
+        }
+      },
+      "required": [
+        "style",
+        "palette"
+      ]
+    }
+  },
+  {
+    "name": "generate_template",
+    "server": "hela-phenotype",
+    "description": "Generate a full HTML starter page for a style + palette + archetype combination. IMPORTANT: Run evaluate_style first to determine the best style/palette/archetype for your product context.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3"
+        },
+        "palette": {
+          "type": "string",
+          "description": "Color palette: pastel|dark|vibrant|mono"
+        },
+        "archetype": {
+          "type": "string",
+          "description": "Page archetype: dashboard|settings|table-detail|marketing-hero|editorial-landing"
+        }
+      },
+      "required": [
+        "style",
+        "palette",
+        "archetype"
+      ]
+    }
+  },
+  {
+    "name": "get_component",
+    "server": "hela-phenotype",
+    "description": "Get a production-ready component snippet styled for a specific design system. Supports HTML (Tailwind), React (TSX functional component with typed props), and Vue 3 (SFC with script setup). IMPORTANT: Run evaluate_style first to confirm the style choice.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "enum": [
+            "button",
+            "card",
+            "navbar",
+            "hero",
+            "form-input",
+            "badge",
+            "modal",
+            "sidebar",
+            "table",
+            "footer",
+            "chart"
+          ],
+          "description": "Component type"
+        },
+        "style": {
+          "type": "string",
+          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3"
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "html",
+            "react",
+            "vue"
+          ],
+          "description": "Output framework (default: html). 'react' returns a TypeScript FC with typed props. 'vue' returns a Vue 3 SFC with script setup."
+        }
+      },
+      "required": [
+        "component",
+        "style"
+      ]
+    }
+  },
+  {
+    "name": "audit_accessibility",
+    "server": "hela-phenotype",
+    "description": "Run a 25-check WCAG 2.1 accessibility audit on HTML content. Covers: missing alt text, unlabeled inputs/selects/textareas, empty buttons/links, missing lang/title, heading order violations, focus-visible removal, positive tabindex, skip links, viewport scale lock, landmark regions, and more. Returns a 0-100 score, A-F grade, per-severity issue counts, actionable fix instructions per issue, and a list of passed checks.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "html": {
+          "type": "string",
+          "description": "Full HTML string to audit"
+        }
+      },
+      "required": [
+        "html"
+      ]
+    }
+  },
+  {
+    "name": "generate_css_output",
+    "server": "hela-phenotype",
+    "description": "Generate framework-agnostic CSS output from a design style and palette. Supports vanilla CSS (tokens.css + base.css + components.css), CSS Modules (Button/Card/Input .module.css with all 8 states), SCSS (variables + mixins + BEM components), and css-variables-only (tokens with auto dark mode @media and [data-theme='dark']). Returns an array of named files ready to save to disk.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "description": "Design system slug (e.g. glass, neo-brutalism, minimal, material)"
+        },
+        "palette": {
+          "type": "string",
+          "enum": [
+            "pastel",
+            "dark",
+            "vibrant",
+            "mono"
+          ],
+          "description": "Color palette"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "vanilla",
+            "css-modules",
+            "scss",
+            "css-variables-only"
+          ],
+          "description": "Output format"
+        }
+      },
+      "required": [
+        "style",
+        "palette",
+        "format"
+      ]
+    }
+  },
+  {
+    "name": "get_cross_cutting_rules",
+    "server": "hela-phenotype",
+    "description": "Get standalone cross-cutting design rules by category. Categories: icons, accessibility, motion, tokens, responsive, tailwind. Returns the rules as a formatted string.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "icons",
+            "accessibility",
+            "motion",
+            "tokens",
+            "responsive",
+            "tailwind"
+          ],
+          "description": "Cross-cutting rule category"
+        }
+      },
+      "required": [
+        "category"
+      ]
+    }
+  },
+  {
+    "name": "generate_palette_variants",
+    "server": "hela-phenotype",
+    "description": "Generate light, dark, high-contrast, muted, and vivid variants from a set of hex colors. Useful for theming and responsive color systems.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array of hex color strings, e.g. [\"#3b82f6\", \"#8b5cf6\"]"
+        }
+      },
+      "required": [
+        "colors"
+      ]
+    }
+  },
+  {
+    "name": "export_project",
+    "server": "hela-phenotype",
+    "description": "Export a complete project scaffold: tailwind.config.js, index.html, input.css, package.json, and component files. Returns all files as a structured manifest ready to write to disk.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3"
+        },
+        "palette": {
+          "type": "string",
+          "description": "Color palette: pastel|dark|vibrant|mono"
+        },
+        "archetype": {
+          "type": "string",
+          "description": "Page archetype: dashboard|settings|table-detail|marketing-hero|editorial-landing"
+        },
+        "projectName": {
+          "type": "string",
+          "description": "Project name (default: my-project)"
+        }
+      },
+      "required": [
+        "style",
+        "palette",
+        "archetype"
+      ]
+    }
+  },
+  {
+    "name": "list_installed_skills",
+    "server": "hela-phenotype",
+    "description": "Detect and list all installed skill submodules alongside this MCP. Shows which skills are available for standalone use and what capabilities they provide.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "evaluate_style",
+    "server": "hela-phenotype",
+    "description": "Evaluates a product description against all design systems and returns ranked style recommendations with scoring. USE THIS FIRST before generate_rules. Takes a product context (e.g. 'automotive gaming mouse', 'enterprise dashboard', 'luxury ecommerce') and returns the best-matching style, palette, archetype, and a step-by-step workflow.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Product description or context (e.g. 'automotive gaming mouse', 'enterprise admin dashboard', 'luxury fashion ecommerce')"
+        }
+      },
+      "required": [
+        "description"
+      ]
+    }
+  },
+  {
+    "name": "brand_list",
+    "server": "hela-phenotype",
+    "description": "List the curated local brand catalog (62 brands across 7 categories) grouped by category. For DESIGN.md retrieval beyond this list, use brand_fetch_design_md, which resolves the full 328+ brand getdesign catalog.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Optional category filter: productivity-saas|developer-tools|ai-ml|fintech|design-creative|ecommerce|media-consumer|automotive-luxury|legacy-archival"
+        }
+      }
+    }
+  },
+  {
+    "name": "pre_flight_scan",
+    "server": "hela-phenotype",
+    "description": "Scan an existing project directory and detect framework, font stack, palette tokens, motion libraries, and spacing scale before designing. Returns structured pre-flight findings with preservation/introduction recommendations.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "project_path": {
+          "type": "string",
+          "description": "Absolute path to the project root. Defaults to MCP root if omitted."
+        }
+      }
+    }
+  },
+  {
+    "name": "anti_pattern_check",
+    "server": "hela-phenotype",
+    "description": "Run a 35-gate quality checklist (slop test) against HTML/CSS content. Detects common AI design tells: italic headers, em-in-heading, dummy section tags, fabricated metrics, fake chrome, specimen fall-through, hanging headers, generic CTA, glass on white, missing a11y, and more. Specify genre to scope genre-specific gates.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "HTML or CSS content to check"
+        },
+        "genre": {
+          "type": "string",
+          "enum": [
+            "editorial",
+            "modern-minimal",
+            "atmospheric",
+            "playful"
+          ],
+          "default": "editorial",
+          "description": "Genre for scoped gate application"
+        }
+      },
+      "required": [
+        "content"
+      ]
+    }
+  },
+  {
+    "name": "self_critique",
+    "server": "hela-phenotype",
+    "description": "Score output on 6 quality axes (Philosophy, Hierarchy, Execution, Specificity, Restraint, Variety) before shipping. Returns 1-5 per axis and a summary score. Anything < 3 triggers a revision pass.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "HTML/CSS content to score"
+        }
+      },
+      "required": [
+        "content"
+      ]
+    }
+  },
+  {
+    "name": "generate_tokens",
+    "server": "hela-phenotype",
+    "description": "Generate a complete design token system (tokens.css) based on a named theme or genre. Returns CSS custom properties for colors (OKLCH), fonts, spacing, text sizes, easings, durations, and radii. Can also output a Tailwind v4 @theme block.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "theme_name": {
+          "type": "string",
+          "description": "Named theme: Specimen|Atelier|Newsprint|Studio|Manifesto|Brutal|Terminal|Midnight|Bloom|Aurora|Cobalt|Coral|Hum|Garden|Sport|Carnival"
+        },
+        "genre": {
+          "type": "string",
+          "enum": [
+            "editorial",
+            "modern-minimal",
+            "atmospheric",
+            "playful"
+          ],
+          "description": "Genre to pick a theme from (ignored if theme_name provided)"
+        },
+        "last_theme": {
+          "type": "string",
+          "description": "Previous theme name for diversification"
+        },
+        "last_accent": {
+          "type": "string",
+          "description": "Previous accent hue for diversification"
+        }
+      }
+    }
+  },
+  {
+    "name": "list_themes",
+    "server": "hela-phenotype",
+    "description": "List all available named themes, optionally filtered by genre. Each theme includes paper/accent OKLCH values, font pairing, and axis metadata for diversification.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "genre": {
+          "type": "string",
+          "enum": [
+            "editorial",
+            "modern-minimal",
+            "atmospheric",
+            "playful"
+          ],
+          "description": "Optional genre filter"
+        }
+      }
+    }
+  },
+  {
+    "name": "detect_genre",
+    "server": "hela-phenotype",
+    "description": "Detect the most appropriate design genre from a product description or brief. Returns one of: editorial, modern-minimal, atmospheric, playful.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "brief": {
+          "type": "string",
+          "description": "Product description, brief, or design request text"
+        }
+      },
+      "required": [
+        "brief"
+      ]
+    }
+  },
+  {
+    "name": "generate_8state_component",
+    "server": "hela-phenotype",
+    "description": "Generate a complete 8-state component demo page (default, hover, focus, active, disabled, loading, error, success) for a given component kind. Returns a standalone HTML preview file with all states rendered.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "button",
+            "input",
+            "toggle",
+            "chip",
+            "select"
+          ],
+          "description": "Component kind"
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    }
+  },
+  {
+    "name": "build_custom_tokens",
+    "server": "hela-phenotype",
+    "description": "Build a custom OKLCH token system from scratch with paper color, accent color, and font pairing. Use when a brief signals creative-intent (brand color, multi-vibe aesthetic, explicit custom request). Returns tokens.css + Tailwind v4 @theme block.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "paper_l": {
+          "type": "number",
+          "description": "Paper lightness (0-100)"
+        },
+        "paper_c": {
+          "type": "number",
+          "description": "Paper chroma (0-50)"
+        },
+        "paper_h": {
+          "type": "number",
+          "description": "Paper hue (0-360)"
+        },
+        "accent_l": {
+          "type": "number",
+          "description": "Accent lightness (0-100)"
+        },
+        "accent_c": {
+          "type": "number",
+          "description": "Accent chroma (0-50)"
+        },
+        "accent_h": {
+          "type": "number",
+          "description": "Accent hue (0-360)"
+        },
+        "font_display": {
+          "type": "string",
+          "description": "Display font stack, e.g. 'Instrument Serif', Georgia, serif"
+        },
+        "font_body": {
+          "type": "string",
+          "description": "Body font stack, e.g. 'Inter', system-ui, sans-serif"
+        },
+        "font_mono": {
+          "type": "string",
+          "description": "Optional mono font stack (default: JetBrains Mono)"
+        }
+      },
+      "required": [
+        "paper_l",
+        "paper_c",
+        "paper_h",
+        "accent_l",
+        "accent_c",
+        "accent_h",
+        "font_display",
+        "font_body"
+      ]
+    }
+  },
+  {
+    "name": "list_ellis_ui_designs",
+    "server": "hela-phenotype",
+    "description": "List all 24 bespoke Ellis UI component design templates with their specific aesthetic focus.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_ellis_ui_template",
+    "server": "hela-phenotype",
+    "description": "Fetch the HTML structure and CSS logic of a specific Ellis UI design system (e.g., 'backup_dossier' or 'backup_gameboy'). Returns both the design.md guidelines and the root index.html template.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "design_name": {
+          "type": "string",
+          "description": "The folder name of the design (e.g. backup_nutrition, backup_gameboy, backup_swiss_archival)"
+        }
+      },
+      "required": [
+        "design_name"
+      ]
+    }
+  },
+  {
+    "name": "logo_audit",
+    "server": "hela-phenotype",
+    "description": "Audit one or more logo SVGs: live text, rasters, filters, colour count, gradients, strokes, near-miss angles, tiny details, centring, and complexity versus the reference library. Run this before delivering any mark.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths to the SVG file(s) to audit."
+        },
+        "bg": {
+          "type": "string",
+          "description": "Background colour to test contrast against, e.g. '#ffffff'."
+        }
+      },
+      "required": [
+        "files"
+      ]
+    }
+  },
+  {
+    "name": "logo_search_library",
+    "server": "hela-phenotype",
+    "description": "Search the library of 1,400+ real-world SVG logos by mark type, technique, geometry, subject, industry, colour, mood, type style and more. Use --summary semantics (summary=true) to learn a category's conventions, format='paths' to get files to open.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "wordmark|lettermark|letterform|pictorial|abstract|mascot|emblem|combination"
+        },
+        "symbolType": {
+          "type": "string",
+          "description": "Symbol type inside a combination mark"
+        },
+        "technique": {
+          "type": "string",
+          "description": "e.g. negative-space, geometric-construction, letter-substitution (comma = AND)"
+        },
+        "geometry": {
+          "type": "string",
+          "description": "e.g. circle, hexagon, triangle, organic (comma = AND)"
+        },
+        "industry": {
+          "type": "string",
+          "description": "e.g. developer-tools, payments-fintech, database-data"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Substring of the visual subject, e.g. bird, shield, cloud"
+        },
+        "query": {
+          "type": "string",
+          "description": "Free-text words matched against file name, subject, note, mood"
+        },
+        "mood": {
+          "type": "string",
+          "description": "Single mood adjective, e.g. friendly, technical, playful"
+        },
+        "color": {
+          "type": "string",
+          "description": "Colour family present anywhere: red|orange|yellow|green|cyan|blue|purple|pink|black|white|gray"
+        },
+        "primaryColor": {
+          "type": "string",
+          "description": "Dominant family: a hue, 'multi' or 'mono'"
+        },
+        "aspect": {
+          "type": "string",
+          "description": "square|wide|horizontal|extra-wide|tall"
+        },
+        "variant": {
+          "type": "string",
+          "description": "main|icon"
+        },
+        "typeStyle": {
+          "type": "string",
+          "description": "geometric-sans|grotesque-sans|humanist-sans|rounded-sans|serif|slab|script|display-custom|monospace"
+        },
+        "case": {
+          "type": "string",
+          "description": "lowercase|uppercase|titlecase|mixed"
+        },
+        "minColors": {
+          "type": "number",
+          "description": "Minimum distinct colour count"
+        },
+        "maxColors": {
+          "type": "number",
+          "description": "Maximum distinct colour count"
+        },
+        "noGradient": {
+          "type": "boolean",
+          "description": "Only marks with no gradient"
+        },
+        "exemplary": {
+          "type": "boolean",
+          "description": "Only strong teaching examples"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max results (default 25)"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "table",
+            "paths",
+            "json"
+          ],
+          "description": "Output shape (default json)"
+        },
+        "summary": {
+          "type": "boolean",
+          "description": "Aggregate view: conventions of the matching set"
+        },
+        "listValues": {
+          "type": "boolean",
+          "description": "Print allowed values for every filter"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "logo_renderers",
+    "server": "hela-phenotype",
+    "description": "List which SVG rendering backends are available on this machine (cairosvg, rsvg-convert, Inkscape, headless Chrome, macOS Quick Look). Use before promising a PNG deliverable.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "logo_render",
+    "server": "hela-phenotype",
+    "description": "Render logo SVG to transparent PNG at exact sizes, screenshot an HTML sheet, or build a favicon.ico. This is how you look at your own work — render, then view the PNG.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "SVG files to render, or an HTML sheet to screenshot."
+        },
+        "out": {
+          "type": "string",
+          "description": "Output PNG path (single input only)"
+        },
+        "outDir": {
+          "type": "string",
+          "description": "Output folder for a batch"
+        },
+        "size": {
+          "type": "number",
+          "description": "Square size in px"
+        },
+        "width": {
+          "type": "number",
+          "description": "Output width in px"
+        },
+        "height": {
+          "type": "number",
+          "description": "Output height in px"
+        },
+        "padding": {
+          "type": "number",
+          "description": "Padding as a fraction of the canvas (0-0.4)"
+        },
+        "bg": {
+          "type": "string",
+          "description": "Background colour (default transparent)"
+        },
+        "backend": {
+          "type": "string",
+          "description": "Force a backend, e.g. chrome"
+        },
+        "ico": {
+          "type": "string",
+          "description": "Write a favicon .ico from the first input"
+        },
+        "icoSizes": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "ICO sizes, e.g. [16,32,48]"
+        }
+      },
+      "required": [
+        "files"
+      ]
+    }
+  },
+  {
+    "name": "logo_export_variants",
+    "server": "hela-phenotype",
+    "description": "From a master logo SVG, produce the delivery set: black, white, one-colour, square, favicon and app-icon variants, optional PNG sizes, and --web-icons (favicon.ico + PNG icon set + webmanifest + <head> snippet).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "master": {
+          "type": "string",
+          "description": "Path to the master logo SVG"
+        },
+        "outDir": {
+          "type": "string",
+          "description": "Output directory"
+        },
+        "name": {
+          "type": "string",
+          "description": "Base name for outputs (default: master file name)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Accessible <title> for every output, e.g. 'Harbor logo'"
+        },
+        "mono": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra one-colour versions as hex, e.g. ['#0F7C80']"
+        },
+        "iconBg": {
+          "type": "string",
+          "description": "App-icon / maskable tile colour (default #111111)"
+        },
+        "iconFg": {
+          "type": "string",
+          "description": "Mark colour on tiles, or 'keep' for original colours"
+        },
+        "iconScale": {
+          "type": "number",
+          "description": "Mark size on the app-icon tile, 0.55-0.7 typical"
+        },
+        "opticalOffset": {
+          "type": "number",
+          "description": "Vertical nudge for square outputs, -0.4 to 0.4 (negative = up)"
+        },
+        "faviconSource": {
+          "type": "string",
+          "description": "Simplified small-size drawing used for favicon/app-icon/web icons"
+        },
+        "keepWhite": {
+          "type": "boolean",
+          "description": "Leave pure-white paint untouched in one-colour versions"
+        },
+        "only": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subset: black, white, mono, square, favicon, app-icon"
+        },
+        "png": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "PNG sizes for every SVG variant written"
+        },
+        "webIcons": {
+          "type": "boolean",
+          "description": "Also emit favicon.ico + PNG icon set + webmanifest + head snippet"
+        }
+      },
+      "required": [
+        "master",
+        "outDir"
+      ]
+    }
+  },
+  {
+    "name": "logo_concept_sheet",
+    "server": "hela-phenotype",
+    "description": "One-image concept overview: large mark, lockup, true 64/32/16 px sizes, name, one-line idea and recommendation per concept. This is the artefact to show at the concept checkpoint, before building the production kit.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "One SVG per concept (usually the symbol)."
+        },
+        "lockups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional second file per concept (lockup/wordmark)"
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name per concept"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "One-sentence idea per concept"
+        },
+        "title": {
+          "type": "string",
+          "description": "Sheet title"
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Sheet subtitle"
+        },
+        "recommend": {
+          "type": "number",
+          "description": "1-based index of the recommended concept"
+        },
+        "greyscale": {
+          "type": "boolean",
+          "description": "Show everything in greyscale (first-round rule)"
+        },
+        "out": {
+          "type": "string",
+          "description": "Output PNG path (default ./concepts.png)"
+        }
+      },
+      "required": [
+        "files"
+      ]
+    }
+  },
+  {
+    "name": "logo_preview_sheet",
+    "server": "hela-phenotype",
+    "description": "HTML test sheet for a logo: size ladder, 16/32 px pixel test, backgrounds, one-colour, squint blur, mirror/rotate, favicon/app-icon/header/card contexts, side-by-side, and a shelf test versus category competitors.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Logo SVG(s) to test."
+        },
+        "out": {
+          "type": "string",
+          "description": "Output HTML path (default ./logo-preview.html)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Brand name used in mock contexts"
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Labels per file"
+        },
+        "brandColor": {
+          "type": "string",
+          "description": "Brand colour for background/app-icon tests"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Reference SVGs for the shelf test"
+        },
+        "refsIndustry": {
+          "type": "string",
+          "description": "Pull shelf references from the library by industry"
+        },
+        "refsCount": {
+          "type": "number",
+          "description": "How many shelf references (default 11)"
+        },
+        "compareOnly": {
+          "type": "boolean",
+          "description": "Only the side-by-side section"
+        }
+      },
+      "required": [
+        "files"
+      ]
+    }
+  },
+  {
+    "name": "logo_presentation_board",
+    "server": "hela-phenotype",
+    "description": "Client presentation from a JSON spec: brief, each concept with rationale and industry-specific mockups, comparison, recommendation. Exports HTML, or every slide as PNG with pngDir.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "spec": {
+          "type": "string",
+          "description": "Path to a presentation spec JSON (see skills/logo-design/templates/presentation-spec.example.json)"
+        },
+        "out": {
+          "type": "string",
+          "description": "Output HTML path (default presentation.html)"
+        },
+        "pngDir": {
+          "type": "string",
+          "description": "Also export every slide as slide-NN.png (needs Chrome/Chromium)"
+        },
+        "listMockups": {
+          "type": "boolean",
+          "description": "List available industry mockups and exit"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "generate_motion_snippet",
+    "server": "hela-phenotype",
+    "description": "Generate a ready-to-paste anime.js v3 animation snippet for a given motion category and design style. Returns CDN link, code snippet, usage hint, and reduced-motion note. Categories: entrance, micro, stagger, scroll, loader, transition, counter, typewriter. All snippets include prefers-reduced-motion guards.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "entrance",
+            "micro",
+            "stagger",
+            "scroll",
+            "loader",
+            "transition",
+            "counter",
+            "typewriter"
+          ],
+          "description": "Animation category: entrance=page load, micro=button/chip interactions, stagger=list/grid reveal, scroll=IntersectionObserver-triggered, loader=spinner, transition=page transitions, counter=number counters, typewriter=text reveal"
+        },
+        "style": {
+          "type": "string",
+          "description": "Design system (e.g. glass, neo-brutalism, claymorphism, material, minimal, etc.). Adjusts easing and duration to match the system's motion character."
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "animejs",
+            "motion.dev"
+          ],
+          "description": "Animation engine to use. Defaults to motion.dev."
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "html",
+            "react",
+            "vue"
+          ],
+          "description": "Target framework (used by motion.dev engine). Defaults to react."
+        }
+      },
+      "required": [
+        "category",
+        "style"
+      ]
     }
   },
   {
     "name": "stitch_get",
-    "server": "stitch",
-    "description": "Fetches one resource by id (project, screen, design-system, status). Mirrors `stitch get <resource> <id>`. Returns { resource, item, availableActions? }. Follow up with the tool named in availableActions.",
+    "server": "hela-phenotype",
+    "description": "Fetches one Stitch resource by id (project, screen, design-system, status). Mirrors 'stitch get <resource> <id>'. Returns { resource, item, availableActions? }.",
     "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
       "properties": {
-        "id": {
-          "description": "ID of the resource to fetch. Required for every resource except 'status', where id must be omitted.",
-          "type": "string"
-        },
-        "project": {
-          "description": "Stitch Canvas project ID (required for project-scoped resources).",
-          "type": "string"
-        },
         "resource": {
-          "description": "Resource type to fetch (project, screen, design-system, status).",
+          "type": "string",
           "enum": [
             "projects",
             "project",
@@ -57,216 +1165,35 @@
             "design-system",
             "status"
           ],
-          "type": "string"
+          "description": "Resource type to fetch"
         },
-        "workspace": {
-          "description": "Workspace ID override. Required for workspace-scoped resources when no default workspace is configured.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "resource"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "stitch_generate",
-    "server": "stitch",
-    "description": "Triggers a backend generation job (screens, variants). Mirrors `stitch generate <resource>`. Returns { resource, workspace, started, complete } (complete is false because generation runs asynchronously; poll with stitch_find).",
-    "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "properties": {
-        "aspects": {
-          "description": "Target aspects for variants (e.g. LAYOUT, COLOR_SCHEME, TEXT_FONT).",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "count": {
-          "description": "Number of variants to generate (1-5).",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer"
-        },
-        "creativeRange": {
-          "description": "Creative range for variants: REFINE, EXPLORE, or REIMAGINE.",
-          "type": "string"
-        },
-        "delayExecution": {
-          "description": "Reschedule the agent run rather than starting immediately (applies to resource='insights' only).",
-          "type": "boolean"
-        },
-        "device": {
-          "description": "Device type for screen or variant generation: MOBILE, DESKTOP, TABLET, or AGNOSTIC.",
-          "type": "string"
-        },
-        "deviceType": {
-          "description": "Alias for device: MOBILE, DESKTOP, TABLET, or AGNOSTIC.",
-          "type": "string"
-        },
-        "dry-run": {
-          "description": "Validate arguments and preview scope without starting a generation job.",
-          "type": "boolean"
-        },
-        "dryRun": {
-          "description": "Validate arguments and preview scope without starting a generation job.",
-          "type": "boolean"
-        },
-        "insights": {
-          "description": "Insight IDs to generate solutions for (required when resource='solutions'; applies to resource='solutions' only).",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "model": {
-          "description": "Model ID for screen or variant generation (GEMINI_3_8_FLASH or GEMINI_3_5_FLASH_LITE).",
-          "type": "string"
-        },
-        "modelId": {
-          "description": "Alias for model (GEMINI_3_8_FLASH or GEMINI_3_5_FLASH_LITE).",
-          "type": "string"
-        },
-        "newProject": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Create a new Stitch Canvas project for the generated screen (boolean or project title)."
-        },
-        "priorities": {
-          "description": "Priority IDs to scope generation to (applies to resource='insights' only; omit to generate across the entire workspace).",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
+        "id": {
+          "type": "string",
+          "description": "ID of the resource to fetch (omit for status)"
         },
         "project": {
-          "description": "Stitch Canvas project ID (required for screen and variant generation unless newProject is set).",
-          "type": "string"
-        },
-        "prompt": {
-          "description": "Text prompt for screen or variant generation.",
-          "type": "string"
-        },
-        "replaceExisting": {
-          "description": "Replace existing unassigned solutions instead of adding to them (applies to resource='solutions' only).",
-          "type": "boolean"
-        },
-        "resource": {
-          "description": "Resource type to generate (screens, variants).",
-          "enum": [
-            "screens",
-            "screen",
-            "variants",
-            "variant"
-          ],
-          "type": "string"
-        },
-        "screen": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          ],
-          "description": "Source screen ID or IDs for variant generation."
-        },
-        "selectedScreenIds": {
-          "description": "Alias for screen: source screen IDs for variant generation.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "title": {
-          "description": "Optional screen or project title (for screen generation).",
-          "type": "string"
-        },
-        "variantCount": {
-          "description": "Alias for count: number of variants to generate (1-5).",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer"
-        },
-        "variantOptions": {
-          "additionalProperties": {},
-          "description": "Nested variant options ({ variantCount, creativeRange, aspects }).",
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
+          "type": "string",
+          "description": "Stitch Canvas project ID"
         },
         "workspace": {
-          "description": "Workspace ID override. Required when no default workspace is configured.",
-          "type": "string"
+          "type": "string",
+          "description": "Workspace ID override"
         }
       },
       "required": [
         "resource"
-      ],
-      "type": "object"
+      ]
     }
   },
   {
     "name": "stitch_find",
-    "server": "stitch",
-    "description": "Lists resources of a given type (projects, screens, design-systems). Mirrors `stitch find <resource>`. Returns { resource, items, returnedCount, isTruncated, nextPageToken }. Follow up with stitch_get on a specific id to inspect full details.",
+    "server": "hela-phenotype",
+    "description": "Lists Stitch resources of a given type (projects, screens, design-systems). Mirrors 'stitch find <resource>'. Returns items list, count, and pagination info.",
     "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
       "properties": {
-        "criteria": {
-          "additionalProperties": {},
-          "description": "Resource-specific filter criteria (e.g. projects={title}, screens={title, deviceType}, design-systems={displayName}, or {id, state}).",
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "filter": {
-          "description": "AIP-160 filter expression.",
-          "type": "string"
-        },
-        "include": {
-          "description": "Related collections to pull into each item.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "limit": {
-          "description": "Maximum number of items to return (default 50).",
-          "maximum": 9007199254740991,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "pageSize": {
-          "description": "Items per page requested from the API (defaults to limit).",
-          "maximum": 9007199254740991,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "pageToken": {
-          "description": "Resume from a previous result's nextPageToken. Not supported for Canvas resources.",
-          "type": "string"
-        },
-        "project": {
-          "description": "Stitch Canvas project ID (required for project-scoped resources).",
-          "type": "string"
-        },
         "resource": {
-          "description": "Resource type to list (projects, screens, design-systems).",
+          "type": "string",
           "enum": [
             "projects",
             "project",
@@ -275,164 +1202,263 @@
             "design-systems",
             "design-system"
           ],
-          "type": "string"
+          "description": "Resource type to list"
+        },
+        "project": {
+          "type": "string",
+          "description": "Stitch Canvas project ID"
         },
         "workspace": {
-          "description": "Workspace ID override. Required for workspace-scoped resources when no default workspace is configured.",
-          "type": "string"
+          "type": "string",
+          "description": "Workspace ID override"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of items to return"
+        },
+        "filter": {
+          "type": "string",
+          "description": "AIP-160 filter expression"
+        },
+        "criteria": {
+          "type": "object",
+          "description": "Resource-specific filter criteria"
         }
       },
       "required": [
         "resource"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "stitch_edit",
-    "server": "stitch",
-    "description": "Applies a partial update to one resource. Mirrors `stitch edit <resource> <id>`. Use to modify mutable fields ('update priority description', 'edit context', 'update workspace file', 'patch skill', 'pause webhook', 'edit screen'). Returns { resource, item, updateMask }; when Canvas applies the edit asynchronously (design systems), returns { resource, id, status: 'pending', session, requested, message } and the caller should re-read the resource later; with dryRun, returns the exact request preview.",
-    "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "additionalProperties": false,
-      "properties": {
-        "dryRun": {
-          "description": "Preview the request without modifying the resource.",
-          "type": "boolean"
-        },
-        "id": {
-          "description": "ID of the resource to edit. For screens, also accepts projects/<p>/screens/<s> or a Stitch canvas URL; the project it names is used.",
-          "minLength": 1,
-          "type": "string"
-        },
-        "patch": {
-          "additionalProperties": {},
-          "description": "Fields to update. Editable fields: screen={deviceType, modelId, prompt, designSystem}, design-system={designSystem={displayName, theme={bodyFont, colorMode, colorVariant, customColor, designMd, headlineFont, labelFont, overrideNeutralColor, overridePrimaryColor, overrideSecondaryColor, overrideTertiaryColor, roundness, spacing, typography}}}.",
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "project": {
-          "description": "Stitch project ID (required for project-scoped resources).",
-          "type": "string"
-        },
-        "resource": {
-          "description": "Resource type to edit (screen, design-system).",
-          "enum": [
-            "screen",
-            "design-system"
-          ],
-          "type": "string"
-        },
-        "updateMask": {
-          "description": "Comma-separated field paths to update. Derived from patch keys when omitted.",
-          "type": "string"
-        },
-        "workspace": {
-          "description": "Workspace ID override. Required for workspace-scoped resources when no default workspace is configured.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "resource",
-        "id",
-        "patch"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "stitch_delete",
-    "server": "stitch",
-    "description": "Removes one resource by id (project). Mirrors `stitch delete <resource> <id>`. Returns { resource, id, deleted }.",
-    "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "properties": {
-        "confirm": {
-          "description": "Must be set to true when deleting a cascading resource (workspace, project).",
-          "type": "boolean"
-        },
-        "dry-run": {
-          "description": "Preview what would be deleted and issue no HTTP request.",
-          "type": "boolean"
-        },
-        "dryRun": {
-          "description": "Preview what would be deleted and issue no HTTP request.",
-          "type": "boolean"
-        },
-        "id": {
-          "description": "ID of the resource to delete.",
-          "minLength": 1,
-          "type": "string"
-        },
-        "project": {
-          "description": "Stitch Canvas project ID (required for project-scoped resources).",
-          "type": "string"
-        },
-        "resource": {
-          "description": "Resource type to delete (project).",
-          "enum": [
-            "projects",
-            "project"
-          ],
-          "type": "string"
-        },
-        "workspace": {
-          "description": "Workspace ID override. Required for workspace-scoped resources when no default workspace is configured.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "resource",
-        "id"
-      ],
-      "type": "object"
+      ]
     }
   },
   {
     "name": "stitch_create",
-    "server": "stitch",
-    "description": "Creates one resource. Mirrors `stitch create <resource>`. Use to perform atomic creation ('add context', 'create priority', 'connect tool provider', 'create skill', 'generate screen'). Returns { resource, item, created }; with dryRun, returns the exact request preview.",
+    "server": "hela-phenotype",
+    "description": "Creates one Stitch resource (project, screen, design-system). Mirrors 'stitch create <resource>'. Returns created resource metadata.",
     "parameters": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "additionalProperties": false,
+      "type": "object",
       "properties": {
-        "body": {
-          "additionalProperties": {},
-          "description": "Resource payload. Required fields: project={}, screen={prompt}, design-system={designSystem={displayName, theme={bodyFont, colorMode, customColor, headlineFont, roundness}}}.",
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "dryRun": {
-          "description": "Validate payload and preview the request without sending it.",
-          "type": "boolean"
-        },
-        "project": {
-          "description": "Stitch project ID (required for project-scoped resources).",
-          "type": "string"
-        },
         "resource": {
-          "description": "Resource type to create (project, screen, design-system).",
+          "type": "string",
           "enum": [
             "project",
             "screen",
             "design-system"
           ],
-          "type": "string"
+          "description": "Resource type to create"
+        },
+        "body": {
+          "type": "object",
+          "description": "Resource payload. Required: project={title}, screen={prompt}, design-system={designSystem={displayName, theme}}."
+        },
+        "project": {
+          "type": "string",
+          "description": "Stitch Canvas project ID"
         },
         "workspace": {
-          "description": "Workspace ID override. Required for workspace-scoped resources when no default workspace is configured.",
-          "type": "string"
+          "type": "string",
+          "description": "Workspace ID override"
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "Validate payload and preview without making API calls"
         }
       },
       "required": [
         "resource",
         "body"
-      ],
-      "type": "object"
+      ]
+    }
+  },
+  {
+    "name": "stitch_edit",
+    "server": "hela-phenotype",
+    "description": "Updates mutable fields on a Stitch resource. Mirrors 'stitch edit <resource> <id>'.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type to edit"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource ID to edit"
+        },
+        "body": {
+          "type": "object",
+          "description": "Fields to update"
+        },
+        "project": {
+          "type": "string",
+          "description": "Stitch Canvas project ID"
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Workspace ID override"
+        }
+      },
+      "required": [
+        "resource",
+        "id",
+        "body"
+      ]
+    }
+  },
+  {
+    "name": "stitch_delete",
+    "server": "hela-phenotype",
+    "description": "Deletes a Stitch resource by ID. Mirrors 'stitch delete <resource> <id>'.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type to delete"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource ID to delete"
+        },
+        "project": {
+          "type": "string",
+          "description": "Stitch Canvas project ID"
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Workspace ID override"
+        }
+      },
+      "required": [
+        "resource",
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "stitch_generate",
+    "server": "hela-phenotype",
+    "description": "Triggers a backend generative creation job for Stitch screens or variants. Mirrors 'stitch generate <resource>'.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "enum": [
+            "screens",
+            "screen",
+            "variants",
+            "variant"
+          ],
+          "description": "Resource type to generate"
+        },
+        "project": {
+          "type": "string",
+          "description": "Stitch Canvas project ID"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Text prompt for screen or variant generation"
+        },
+        "aspects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Target aspects for variants (LAYOUT, COLOR_SCHEME, TEXT_FONT)"
+        },
+        "count": {
+          "type": "integer",
+          "description": "Number of variants to generate (1-5)"
+        },
+        "creativeRange": {
+          "type": "string",
+          "description": "Creative range: REFINE, EXPLORE, or REIMAGINE"
+        },
+        "device": {
+          "type": "string",
+          "description": "Device type: MOBILE, DESKTOP, TABLET, or AGNOSTIC"
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "Validate arguments and preview without starting job"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "stitch_url",
+    "server": "hela-phenotype",
+    "description": "Prints the canonical Stitch Canvas web URL for a project or screen. Mirrors 'stitch url <resource> <id>'.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "enum": [
+            "project",
+            "screen"
+          ],
+          "description": "Target resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Project or screen ID"
+        },
+        "project": {
+          "type": "string",
+          "description": "Stitch Canvas project ID"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "stitch_sync_design_system",
+    "server": "hela-phenotype",
+    "description": "Export the current or chosen OKLCH theme and design rules into a Stitch-compliant DESIGN.md and .stitch/design-system.json for automated visual canvas synchronization.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "themeName": {
+          "type": "string",
+          "description": "Theme name (e.g. 'Obsidian Kinetic', 'Manifesto', 'Studio')"
+        },
+        "style": {
+          "type": "string",
+          "description": "Design style (e.g. 'awwwards', 'minimal', 'glass')"
+        },
+        "targetDir": {
+          "type": "string",
+          "description": "Target repository directory (defaults to current working directory)"
+        }
+      }
+    }
+  },
+  {
+    "name": "stitch_screen_audit",
+    "server": "hela-phenotype",
+    "description": "Run a unified audit on a Stitch-captured HTML screen or file. Executes 25-check WCAG 2.1 static analysis, 35+ gate anti-slop checks, and 6-axis craft critique.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "screenHtml": {
+          "type": "string",
+          "description": "Full HTML content of the captured screen"
+        },
+        "filePath": {
+          "type": "string",
+          "description": "Path to a captured HTML file (e.g. .stitch/captured-dom.html)"
+        },
+        "genre": {
+          "type": "string",
+          "description": "Design genre for scoped anti-slop checks (default: avant-garde)"
+        }
+      }
     }
   },
   {
@@ -2555,1154 +3581,6 @@
       },
       "required": [
         "code"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "validate_combo",
-    "server": "hela-phenotype",
-    "description": "Validate a style + palette + optional hybrid combination before generating rules.",
-    "parameters": {
-      "properties": {
-        "hybrid": {
-          "type": "string"
-        },
-        "palette": {
-          "type": "string"
-        },
-        "style": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "style",
-        "palette"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "self_critique",
-    "server": "hela-phenotype",
-    "description": "Score output on 6 quality axes (Philosophy, Hierarchy, Execution, Specificity, Restraint, Variety) before shipping. Returns 1-5 per axis and a summary score. Anything < 3 triggers a revision pass.",
-    "parameters": {
-      "properties": {
-        "content": {
-          "description": "HTML/CSS content to score",
-          "type": "string"
-        }
-      },
-      "required": [
-        "content"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "pre_flight_scan",
-    "server": "hela-phenotype",
-    "description": "Scan an existing project directory and detect framework, font stack, palette tokens, motion libraries, and spacing scale before designing. Returns structured pre-flight findings with preservation/introduction recommendations.",
-    "parameters": {
-      "properties": {
-        "project_path": {
-          "description": "Absolute path to the project root. Defaults to MCP root if omitted.",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "palette_fetch",
-    "server": "hela-phenotype",
-    "description": "Fetch live color palettes from Color Hunt.",
-    "parameters": {
-      "properties": {
-        "format": {
-          "description": "Output format (default json)",
-          "enum": [
-            "json",
-            "css",
-            "tailwind"
-          ],
-          "type": "string"
-        },
-        "limit": {
-          "description": "Number of palettes (default 5)",
-          "type": "number"
-        },
-        "mode": {
-          "description": "Fetch mode",
-          "enum": [
-            "trending",
-            "popular",
-            "random",
-            "theme",
-            "query"
-          ],
-          "type": "string"
-        },
-        "query": {
-          "description": "Search query (when mode=query)",
-          "type": "string"
-        },
-        "theme": {
-          "description": "Theme name (when mode=theme)",
-          "type": "string"
-        }
-      },
-      "required": [
-        "mode"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "palette_convert",
-    "server": "hela-phenotype",
-    "description": "Convert palette JSON from palette_fetch into CSS, Tailwind, SCSS, Figma tokens, Android XML, or Swift.",
-    "parameters": {
-      "properties": {
-        "palettes": {
-          "description": "Palette array from palette_fetch JSON output",
-          "type": "array"
-        },
-        "target": {
-          "description": "Output format",
-          "enum": [
-            "css",
-            "tailwind",
-            "scss",
-            "figma",
-            "android",
-            "swift"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "palettes",
-        "target"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_search_library",
-    "server": "hela-phenotype",
-    "description": "Search the library of 1,400+ real-world SVG logos by mark type, technique, geometry, subject, industry, colour, mood, type style and more. Use --summary semantics (summary=true) to learn a category's conventions, format='paths' to get files to open.",
-    "parameters": {
-      "properties": {
-        "aspect": {
-          "description": "square|wide|horizontal|extra-wide|tall",
-          "type": "string"
-        },
-        "case": {
-          "description": "lowercase|uppercase|titlecase|mixed",
-          "type": "string"
-        },
-        "color": {
-          "description": "Colour family present anywhere: red|orange|yellow|green|cyan|blue|purple|pink|black|white|gray",
-          "type": "string"
-        },
-        "exemplary": {
-          "description": "Only strong teaching examples",
-          "type": "boolean"
-        },
-        "format": {
-          "description": "Output shape (default json)",
-          "enum": [
-            "table",
-            "paths",
-            "json"
-          ],
-          "type": "string"
-        },
-        "geometry": {
-          "description": "e.g. circle, hexagon, triangle, organic (comma = AND)",
-          "type": "string"
-        },
-        "industry": {
-          "description": "e.g. developer-tools, payments-fintech, database-data",
-          "type": "string"
-        },
-        "limit": {
-          "description": "Max results (default 25)",
-          "type": "number"
-        },
-        "listValues": {
-          "description": "Print allowed values for every filter",
-          "type": "boolean"
-        },
-        "maxColors": {
-          "description": "Maximum distinct colour count",
-          "type": "number"
-        },
-        "minColors": {
-          "description": "Minimum distinct colour count",
-          "type": "number"
-        },
-        "mood": {
-          "description": "Single mood adjective, e.g. friendly, technical, playful",
-          "type": "string"
-        },
-        "noGradient": {
-          "description": "Only marks with no gradient",
-          "type": "boolean"
-        },
-        "primaryColor": {
-          "description": "Dominant family: a hue, 'multi' or 'mono'",
-          "type": "string"
-        },
-        "query": {
-          "description": "Free-text words matched against file name, subject, note, mood",
-          "type": "string"
-        },
-        "subject": {
-          "description": "Substring of the visual subject, e.g. bird, shield, cloud",
-          "type": "string"
-        },
-        "summary": {
-          "description": "Aggregate view: conventions of the matching set",
-          "type": "boolean"
-        },
-        "symbolType": {
-          "description": "Symbol type inside a combination mark",
-          "type": "string"
-        },
-        "technique": {
-          "description": "e.g. negative-space, geometric-construction, letter-substitution (comma = AND)",
-          "type": "string"
-        },
-        "type": {
-          "description": "wordmark|lettermark|letterform|pictorial|abstract|mascot|emblem|combination",
-          "type": "string"
-        },
-        "typeStyle": {
-          "description": "geometric-sans|grotesque-sans|humanist-sans|rounded-sans|serif|slab|script|display-custom|monospace",
-          "type": "string"
-        },
-        "variant": {
-          "description": "main|icon",
-          "type": "string"
-        }
-      },
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_renderers",
-    "server": "hela-phenotype",
-    "description": "List which SVG rendering backends are available on this machine (cairosvg, rsvg-convert, Inkscape, headless Chrome, macOS Quick Look). Use before promising a PNG deliverable.",
-    "parameters": {
-      "properties": {},
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_render",
-    "server": "hela-phenotype",
-    "description": "Render logo SVG to transparent PNG at exact sizes, screenshot an HTML sheet, or build a favicon.ico. This is how you look at your own work — render, then view the PNG.",
-    "parameters": {
-      "properties": {
-        "backend": {
-          "description": "Force a backend, e.g. chrome",
-          "type": "string"
-        },
-        "bg": {
-          "description": "Background colour (default transparent)",
-          "type": "string"
-        },
-        "files": {
-          "description": "SVG files to render, or an HTML sheet to screenshot.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "height": {
-          "description": "Output height in px",
-          "type": "number"
-        },
-        "ico": {
-          "description": "Write a favicon .ico from the first input",
-          "type": "string"
-        },
-        "icoSizes": {
-          "description": "ICO sizes, e.g. [16,32,48]",
-          "items": {
-            "type": "number"
-          },
-          "type": "array"
-        },
-        "out": {
-          "description": "Output PNG path (single input only)",
-          "type": "string"
-        },
-        "outDir": {
-          "description": "Output folder for a batch",
-          "type": "string"
-        },
-        "padding": {
-          "description": "Padding as a fraction of the canvas (0-0.4)",
-          "type": "number"
-        },
-        "size": {
-          "description": "Square size in px",
-          "type": "number"
-        },
-        "width": {
-          "description": "Output width in px",
-          "type": "number"
-        }
-      },
-      "required": [
-        "files"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_preview_sheet",
-    "server": "hela-phenotype",
-    "description": "HTML test sheet for a logo: size ladder, 16/32 px pixel test, backgrounds, one-colour, squint blur, mirror/rotate, favicon/app-icon/header/card contexts, side-by-side, and a shelf test versus category competitors.",
-    "parameters": {
-      "properties": {
-        "brandColor": {
-          "description": "Brand colour for background/app-icon tests",
-          "type": "string"
-        },
-        "compareOnly": {
-          "description": "Only the side-by-side section",
-          "type": "boolean"
-        },
-        "files": {
-          "description": "Logo SVG(s) to test.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "name": {
-          "description": "Brand name used in mock contexts",
-          "type": "string"
-        },
-        "names": {
-          "description": "Labels per file",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "out": {
-          "description": "Output HTML path (default ./logo-preview.html)",
-          "type": "string"
-        },
-        "refs": {
-          "description": "Reference SVGs for the shelf test",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "refsCount": {
-          "description": "How many shelf references (default 11)",
-          "type": "number"
-        },
-        "refsIndustry": {
-          "description": "Pull shelf references from the library by industry",
-          "type": "string"
-        }
-      },
-      "required": [
-        "files"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_presentation_board",
-    "server": "hela-phenotype",
-    "description": "Client presentation from a JSON spec: brief, each concept with rationale and industry-specific mockups, comparison, recommendation. Exports HTML, or every slide as PNG with pngDir.",
-    "parameters": {
-      "properties": {
-        "listMockups": {
-          "description": "List available industry mockups and exit",
-          "type": "boolean"
-        },
-        "out": {
-          "description": "Output HTML path (default presentation.html)",
-          "type": "string"
-        },
-        "pngDir": {
-          "description": "Also export every slide as slide-NN.png (needs Chrome/Chromium)",
-          "type": "string"
-        },
-        "spec": {
-          "description": "Path to a presentation spec JSON (see skills/logo-design/templates/presentation-spec.example.json)",
-          "type": "string"
-        }
-      },
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_export_variants",
-    "server": "hela-phenotype",
-    "description": "From a master logo SVG, produce the delivery set: black, white, one-colour, square, favicon and app-icon variants, optional PNG sizes, and --web-icons (favicon.ico + PNG icon set + webmanifest + <head> snippet).",
-    "parameters": {
-      "properties": {
-        "faviconSource": {
-          "description": "Simplified small-size drawing used for favicon/app-icon/web icons",
-          "type": "string"
-        },
-        "iconBg": {
-          "description": "App-icon / maskable tile colour (default #111111)",
-          "type": "string"
-        },
-        "iconFg": {
-          "description": "Mark colour on tiles, or 'keep' for original colours",
-          "type": "string"
-        },
-        "iconScale": {
-          "description": "Mark size on the app-icon tile, 0.55-0.7 typical",
-          "type": "number"
-        },
-        "keepWhite": {
-          "description": "Leave pure-white paint untouched in one-colour versions",
-          "type": "boolean"
-        },
-        "master": {
-          "description": "Path to the master logo SVG",
-          "type": "string"
-        },
-        "mono": {
-          "description": "Extra one-colour versions as hex, e.g. ['#0F7C80']",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "name": {
-          "description": "Base name for outputs (default: master file name)",
-          "type": "string"
-        },
-        "only": {
-          "description": "Subset: black, white, mono, square, favicon, app-icon",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "opticalOffset": {
-          "description": "Vertical nudge for square outputs, -0.4 to 0.4 (negative = up)",
-          "type": "number"
-        },
-        "outDir": {
-          "description": "Output directory",
-          "type": "string"
-        },
-        "png": {
-          "description": "PNG sizes for every SVG variant written",
-          "items": {
-            "type": "number"
-          },
-          "type": "array"
-        },
-        "title": {
-          "description": "Accessible <title> for every output, e.g. 'Harbor logo'",
-          "type": "string"
-        },
-        "webIcons": {
-          "description": "Also emit favicon.ico + PNG icon set + webmanifest + head snippet",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "master",
-        "outDir"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_concept_sheet",
-    "server": "hela-phenotype",
-    "description": "One-image concept overview: large mark, lockup, true 64/32/16 px sizes, name, one-line idea and recommendation per concept. This is the artefact to show at the concept checkpoint, before building the production kit.",
-    "parameters": {
-      "properties": {
-        "files": {
-          "description": "One SVG per concept (usually the symbol).",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "greyscale": {
-          "description": "Show everything in greyscale (first-round rule)",
-          "type": "boolean"
-        },
-        "lockups": {
-          "description": "Optional second file per concept (lockup/wordmark)",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "names": {
-          "description": "Name per concept",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "notes": {
-          "description": "One-sentence idea per concept",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "out": {
-          "description": "Output PNG path (default ./concepts.png)",
-          "type": "string"
-        },
-        "recommend": {
-          "description": "1-based index of the recommended concept",
-          "type": "number"
-        },
-        "subtitle": {
-          "description": "Sheet subtitle",
-          "type": "string"
-        },
-        "title": {
-          "description": "Sheet title",
-          "type": "string"
-        }
-      },
-      "required": [
-        "files"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "logo_audit",
-    "server": "hela-phenotype",
-    "description": "Audit one or more logo SVGs: live text, rasters, filters, colour count, gradients, strokes, near-miss angles, tiny details, centring, and complexity versus the reference library. Run this before delivering any mark.",
-    "parameters": {
-      "properties": {
-        "bg": {
-          "description": "Background colour to test contrast against, e.g. '#ffffff'.",
-          "type": "string"
-        },
-        "files": {
-          "description": "Paths to the SVG file(s) to audit.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "files"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "list_themes",
-    "server": "hela-phenotype",
-    "description": "List all available named themes, optionally filtered by genre. Each theme includes paper/accent OKLCH values, font pairing, and axis metadata for diversification.",
-    "parameters": {
-      "properties": {
-        "genre": {
-          "description": "Optional genre filter",
-          "enum": [
-            "editorial",
-            "modern-minimal",
-            "atmospheric",
-            "playful"
-          ],
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "list_options",
-    "server": "hela-phenotype",
-    "description": "List all available design systems, palettes, archetypes, and valid hybrid combinations.",
-    "parameters": {
-      "properties": {},
-      "type": "object"
-    }
-  },
-  {
-    "name": "list_installed_skills",
-    "server": "hela-phenotype",
-    "description": "Detect and list all installed skill submodules alongside this MCP. Shows which skills are available for standalone use and what capabilities they provide.",
-    "parameters": {
-      "properties": {},
-      "type": "object"
-    }
-  },
-  {
-    "name": "list_ellis_ui_designs",
-    "server": "hela-phenotype",
-    "description": "List all 24 bespoke Ellis UI component design templates with their specific aesthetic focus.",
-    "parameters": {
-      "properties": {},
-      "type": "object"
-    }
-  },
-  {
-    "name": "get_reference",
-    "server": "hela-phenotype",
-    "description": "Return the full content of a reference document by name (e.g. 'ant-design', 'accessibility', 'design-tokens', 'getdesign-md').",
-    "parameters": {
-      "properties": {
-        "name": {
-          "description": "Reference file name without .md extension",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "get_ellis_ui_template",
-    "server": "hela-phenotype",
-    "description": "Fetch the HTML structure and CSS logic of a specific Ellis UI design system (e.g., 'backup_dossier' or 'backup_gameboy'). Returns both the design.md guidelines and the root index.html template.",
-    "parameters": {
-      "properties": {
-        "design_name": {
-          "description": "The folder name of the design (e.g. backup_nutrition, backup_gameboy, backup_swiss_archival)",
-          "type": "string"
-        }
-      },
-      "required": [
-        "design_name"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "get_cross_cutting_rules",
-    "server": "hela-phenotype",
-    "description": "Get standalone cross-cutting design rules by category. Categories: icons, accessibility, motion, tokens, responsive, tailwind. Returns the rules as a formatted string.",
-    "parameters": {
-      "properties": {
-        "category": {
-          "description": "Cross-cutting rule category",
-          "enum": [
-            "icons",
-            "accessibility",
-            "motion",
-            "tokens",
-            "responsive",
-            "tailwind"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "category"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "get_component",
-    "server": "hela-phenotype",
-    "description": "Get a production-ready component snippet styled for a specific design system. Supports HTML (Tailwind), React (TSX functional component with typed props), and Vue 3 (SFC with script setup). IMPORTANT: Run evaluate_style first to confirm the style choice.",
-    "parameters": {
-      "properties": {
-        "component": {
-          "description": "Component type",
-          "enum": [
-            "button",
-            "card",
-            "navbar",
-            "hero",
-            "form-input",
-            "badge",
-            "modal",
-            "sidebar",
-            "table",
-            "footer",
-            "chart"
-          ],
-          "type": "string"
-        },
-        "framework": {
-          "description": "Output framework (default: html). 'react' returns a TypeScript FC with typed props. 'vue' returns a Vue 3 SFC with script setup.",
-          "enum": [
-            "html",
-            "react",
-            "vue"
-          ],
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3",
-          "type": "string"
-        }
-      },
-      "required": [
-        "component",
-        "style"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_tokens",
-    "server": "hela-phenotype",
-    "description": "Generate a complete design token system (tokens.css) based on a named theme or genre. Returns CSS custom properties for colors (OKLCH), fonts, spacing, text sizes, easings, durations, and radii. Can also output a Tailwind v4 @theme block.",
-    "parameters": {
-      "properties": {
-        "genre": {
-          "description": "Genre to pick a theme from (ignored if theme_name provided)",
-          "enum": [
-            "editorial",
-            "modern-minimal",
-            "atmospheric",
-            "playful"
-          ],
-          "type": "string"
-        },
-        "last_accent": {
-          "description": "Previous accent hue for diversification",
-          "type": "string"
-        },
-        "last_theme": {
-          "description": "Previous theme name for diversification",
-          "type": "string"
-        },
-        "theme_name": {
-          "description": "Named theme: Specimen|Atelier|Newsprint|Studio|Manifesto|Brutal|Terminal|Midnight|Bloom|Aurora|Cobalt|Coral|Hum|Garden|Sport|Carnival",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_template",
-    "server": "hela-phenotype",
-    "description": "Generate a full HTML starter page for a style + palette + archetype combination. IMPORTANT: Run evaluate_style first to determine the best style/palette/archetype for your product context.",
-    "parameters": {
-      "properties": {
-        "archetype": {
-          "description": "Page archetype: dashboard|settings|table-detail|marketing-hero|editorial-landing",
-          "type": "string"
-        },
-        "palette": {
-          "description": "Color palette: pastel|dark|vibrant|mono",
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3",
-          "type": "string"
-        }
-      },
-      "required": [
-        "style",
-        "palette",
-        "archetype"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_tailwind_config",
-    "server": "hela-phenotype",
-    "description": "Generate a ready-to-use tailwind.config.js for a design style + palette combination. Returns the full config object and module.exports code string.",
-    "parameters": {
-      "properties": {
-        "palette": {
-          "description": "Color palette: pastel|dark|vibrant|mono",
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3",
-          "type": "string"
-        }
-      },
-      "required": [
-        "style",
-        "palette"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_rules",
-    "server": "hela-phenotype",
-    "description": "Generate design rules for a style + palette + optional archetype/hybrid. IMPORTANT: Run evaluate_style first to determine the best style for your product context. Only use this tool after evaluation confirms the style choice.",
-    "parameters": {
-      "properties": {
-        "archetype": {
-          "description": "Optional page archetype: dashboard|settings|table-detail|marketing-hero|editorial-landing",
-          "type": "string"
-        },
-        "hybrid": {
-          "description": "Optional secondary system for hybrid mode",
-          "type": "string"
-        },
-        "palette": {
-          "description": "Color palette: pastel|dark|vibrant|mono",
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3",
-          "type": "string"
-        },
-        "tailwind": {
-          "description": "Include Tailwind CSS rules",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "style",
-        "palette"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_palette_variants",
-    "server": "hela-phenotype",
-    "description": "Generate light, dark, high-contrast, muted, and vivid variants from a set of hex colors. Useful for theming and responsive color systems.",
-    "parameters": {
-      "properties": {
-        "colors": {
-          "description": "Array of hex color strings, e.g. [\"#3b82f6\", \"#8b5cf6\"]",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "colors"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_motion_snippet",
-    "server": "hela-phenotype",
-    "description": "Generate a ready-to-paste anime.js v3 animation snippet for a given motion category and design style. Returns CDN link, code snippet, usage hint, and reduced-motion note. Categories: entrance, micro, stagger, scroll, loader, transition, counter, typewriter. All snippets include prefers-reduced-motion guards.",
-    "parameters": {
-      "properties": {
-        "category": {
-          "description": "Animation category: entrance=page load, micro=button/chip interactions, stagger=list/grid reveal, scroll=IntersectionObserver-triggered, loader=spinner, transition=page transitions, counter=number counters, typewriter=text reveal",
-          "enum": [
-            "entrance",
-            "micro",
-            "stagger",
-            "scroll",
-            "loader",
-            "transition",
-            "counter",
-            "typewriter"
-          ],
-          "type": "string"
-        },
-        "engine": {
-          "description": "Animation engine to use. Defaults to motion.dev.",
-          "enum": [
-            "animejs",
-            "motion.dev"
-          ],
-          "type": "string"
-        },
-        "framework": {
-          "description": "Target framework (used by motion.dev engine). Defaults to react.",
-          "enum": [
-            "html",
-            "react",
-            "vue"
-          ],
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system (e.g. glass, neo-brutalism, claymorphism, material, minimal, etc.). Adjusts easing and duration to match the system's motion character.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "category",
-        "style"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_css_output",
-    "server": "hela-phenotype",
-    "description": "Generate framework-agnostic CSS output from a design style and palette. Supports vanilla CSS (tokens.css + base.css + components.css), CSS Modules (Button/Card/Input .module.css with all 8 states), SCSS (variables + mixins + BEM components), and css-variables-only (tokens with auto dark mode @media and [data-theme='dark']). Returns an array of named files ready to save to disk.",
-    "parameters": {
-      "properties": {
-        "format": {
-          "description": "Output format",
-          "enum": [
-            "vanilla",
-            "css-modules",
-            "scss",
-            "css-variables-only"
-          ],
-          "type": "string"
-        },
-        "palette": {
-          "description": "Color palette",
-          "enum": [
-            "pastel",
-            "dark",
-            "vibrant",
-            "mono"
-          ],
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system slug (e.g. glass, neo-brutalism, minimal, material)",
-          "type": "string"
-        }
-      },
-      "required": [
-        "style",
-        "palette",
-        "format"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "generate_8state_component",
-    "server": "hela-phenotype",
-    "description": "Generate a complete 8-state component demo page (default, hover, focus, active, disabled, loading, error, success) for a given component kind. Returns a standalone HTML preview file with all states rendered.",
-    "parameters": {
-      "properties": {
-        "kind": {
-          "description": "Component kind",
-          "enum": [
-            "button",
-            "input",
-            "toggle",
-            "chip",
-            "select"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "kind"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "export_project",
-    "server": "hela-phenotype",
-    "description": "Export a complete project scaffold: tailwind.config.js, index.html, input.css, package.json, and component files. Returns all files as a structured manifest ready to write to disk.",
-    "parameters": {
-      "properties": {
-        "archetype": {
-          "description": "Page archetype: dashboard|settings|table-detail|marketing-hero|editorial-landing",
-          "type": "string"
-        },
-        "palette": {
-          "description": "Color palette: pastel|dark|vibrant|mono",
-          "type": "string"
-        },
-        "projectName": {
-          "description": "Project name (default: my-project)",
-          "type": "string"
-        },
-        "style": {
-          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3",
-          "type": "string"
-        }
-      },
-      "required": [
-        "style",
-        "palette",
-        "archetype"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "evaluate_style",
-    "server": "hela-phenotype",
-    "description": "Evaluates a product description against all design systems and returns ranked style recommendations with scoring. USE THIS FIRST before generate_rules. Takes a product context (e.g. 'automotive gaming mouse', 'enterprise dashboard', 'luxury ecommerce') and returns the best-matching style, palette, archetype, and a step-by-step workflow.",
-    "parameters": {
-      "properties": {
-        "description": {
-          "description": "Product description or context (e.g. 'automotive gaming mouse', 'enterprise admin dashboard', 'luxury fashion ecommerce')",
-          "type": "string"
-        }
-      },
-      "required": [
-        "description"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "detect_genre",
-    "server": "hela-phenotype",
-    "description": "Detect the most appropriate design genre from a product description or brief. Returns one of: editorial, modern-minimal, atmospheric, playful.",
-    "parameters": {
-      "properties": {
-        "brief": {
-          "description": "Product description, brief, or design request text",
-          "type": "string"
-        }
-      },
-      "required": [
-        "brief"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "build_custom_tokens",
-    "server": "hela-phenotype",
-    "description": "Build a custom OKLCH token system from scratch with paper color, accent color, and font pairing. Use when a brief signals creative-intent (brand color, multi-vibe aesthetic, explicit custom request). Returns tokens.css + Tailwind v4 @theme block.",
-    "parameters": {
-      "properties": {
-        "accent_c": {
-          "description": "Accent chroma (0-50)",
-          "type": "number"
-        },
-        "accent_h": {
-          "description": "Accent hue (0-360)",
-          "type": "number"
-        },
-        "accent_l": {
-          "description": "Accent lightness (0-100)",
-          "type": "number"
-        },
-        "font_body": {
-          "description": "Body font stack, e.g. 'Inter', system-ui, sans-serif",
-          "type": "string"
-        },
-        "font_display": {
-          "description": "Display font stack, e.g. 'Instrument Serif', Georgia, serif",
-          "type": "string"
-        },
-        "font_mono": {
-          "description": "Optional mono font stack (default: JetBrains Mono)",
-          "type": "string"
-        },
-        "paper_c": {
-          "description": "Paper chroma (0-50)",
-          "type": "number"
-        },
-        "paper_h": {
-          "description": "Paper hue (0-360)",
-          "type": "number"
-        },
-        "paper_l": {
-          "description": "Paper lightness (0-100)",
-          "type": "number"
-        }
-      },
-      "required": [
-        "paper_l",
-        "paper_c",
-        "paper_h",
-        "accent_l",
-        "accent_c",
-        "accent_h",
-        "font_display",
-        "font_body"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "brand_list",
-    "server": "hela-phenotype",
-    "description": "List the curated local brand catalog (62 brands across 7 categories) grouped by category. For DESIGN.md retrieval beyond this list, use brand_fetch_design_md, which resolves the full 328+ brand getdesign catalog.",
-    "parameters": {
-      "properties": {
-        "category": {
-          "description": "Optional category filter: productivity-saas|developer-tools|ai-ml|fintech|design-creative|ecommerce|media-consumer|automotive-luxury|legacy-archival",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "brand_fetch_design_md",
-    "server": "hela-phenotype",
-    "description": "Download and return the DESIGN.md for a real brand (stripe, vercel, linear, notion, claude, tesla, etc.).",
-    "parameters": {
-      "properties": {
-        "brand": {
-          "description": "Brand slug, e.g. 'stripe', 'vercel', 'linear.app', 'claude'",
-          "type": "string"
-        }
-      },
-      "required": [
-        "brand"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "audit_accessibility",
-    "server": "hela-phenotype",
-    "description": "Run a 25-check WCAG 2.1 accessibility audit on HTML content. Covers: missing alt text, unlabeled inputs/selects/textareas, empty buttons/links, missing lang/title, heading order violations, focus-visible removal, positive tabindex, skip links, viewport scale lock, landmark regions, and more. Returns a 0-100 score, A-F grade, per-severity issue counts, actionable fix instructions per issue, and a list of passed checks.",
-    "parameters": {
-      "properties": {
-        "html": {
-          "description": "Full HTML string to audit",
-          "type": "string"
-        }
-      },
-      "required": [
-        "html"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "anti_pattern_check",
-    "server": "hela-phenotype",
-    "description": "Run a 35-gate quality checklist (slop test) against HTML/CSS content. Detects common AI design tells: italic headers, em-in-heading, dummy section tags, fabricated metrics, fake chrome, specimen fall-through, hanging headers, generic CTA, glass on white, missing a11y, and more. Specify genre to scope genre-specific gates.",
-    "parameters": {
-      "properties": {
-        "content": {
-          "description": "HTML or CSS content to check",
-          "type": "string"
-        },
-        "genre": {
-          "default": "editorial",
-          "description": "Genre for scoped gate application",
-          "enum": [
-            "editorial",
-            "modern-minimal",
-            "atmospheric",
-            "playful"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "content"
       ],
       "type": "object"
     }
