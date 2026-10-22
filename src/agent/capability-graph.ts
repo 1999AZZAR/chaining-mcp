@@ -269,6 +269,40 @@ export function recallCapabilityPrecedents(
   }
 }
 
+/**
+ * HeLa profile capability allowances and primary affinities.
+ * Reflects the organelle profile cards in assets/needle/profiles/*.txt.
+ */
+export const PROFILE_CAPABILITIES: Record<string, string[]> = {
+  'all': ['*'],
+  'dev-workspace': [
+    'filesystem.read', 'filesystem.write', 'terminal.execute',
+    'browser.observe', 'browser.act', 'research.search',
+    'project.query', 'project.mutate', 'ui.design'
+  ],
+  'headless-server': [
+    'filesystem.read', 'filesystem.write', 'terminal.execute',
+    'research.search', 'project.query', 'project.mutate', 'ui.design'
+  ],
+  'web-devops': [
+    'ui.design', 'browser.observe', 'browser.act',
+    'filesystem.read', 'filesystem.write', 'terminal.execute',
+    'project.query', 'project.mutate'
+  ],
+  'research': [
+    'research.search', 'browser.observe', 'filesystem.read',
+    'filesystem.write', 'project.query', 'project.mutate'
+  ],
+  '3d-modeling': [
+    'blender.model', 'filesystem.read', 'filesystem.write',
+    'terminal.execute', 'project.query'
+  ],
+  'android-testing': [
+    'android.control', 'android.inspect', 'terminal.execute',
+    'research.search', 'project.query', 'project.mutate'
+  ]
+};
+
 export interface ScopeOptions {
   maxCaps?: number;
   previousTool?: string;
@@ -276,6 +310,8 @@ export interface ScopeOptions {
   useEpisodicMemory?: boolean;
   memoryDbPath?: string;
   taskContext?: string;
+  /** Active profile name (e.g. dev-workspace, headless-server). Defaults to process.env.HELA_PROFILE */
+  profile?: string;
 }
 
 /**
@@ -316,7 +352,16 @@ export function selectCapabilitiesForTask(task: string, options: number | ScopeO
     }
   }
 
-  const scored = HELA_CAPABILITIES.map(cap => {
+  const activeProfile = (opts.profile ?? process.env.HELA_PROFILE ?? '').toLowerCase().trim();
+  const allowedCaps = (activeProfile && PROFILE_CAPABILITIES[activeProfile]) ? PROFILE_CAPABILITIES[activeProfile] : undefined;
+  const isCapAllowed = (name: string) => {
+    if (!allowedCaps || allowedCaps.includes('*')) return true;
+    return allowedCaps.includes(name);
+  };
+
+  const eligibleCapabilities = HELA_CAPABILITIES.filter(cap => isCapAllowed(cap.name));
+
+  const scored = eligibleCapabilities.map(cap => {
     let score = 0;
 
     // 1. Exact and stemmed keyword hits

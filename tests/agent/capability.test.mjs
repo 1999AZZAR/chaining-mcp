@@ -4,7 +4,7 @@ import { agentRun } from './.dist/agent/agent.js';
 import {
   HELA_CAPABILITIES, selectCapabilitiesForTask, scopeToolsForTask,
   capabilityOfTool, promptContextSize, stemWord, stemMatches,
-  CAPABILITY_TRANSITIONS, scopeCompactTools, recallCapabilityPrecedents,
+  CAPABILITY_TRANSITIONS, scopeCompactTools, recallCapabilityPrecedents, PROFILE_CAPABILITIES,
 } from './.dist/agent/capability-graph.js';
 import { DatabaseSync } from 'node:sqlite';
 import * as fs from 'node:fs';
@@ -210,6 +210,42 @@ describe('dynamic capability resolver v2', () => {
       assert.equal(scoped[0], 'ui.design');
     } finally {
       try { fs.unlinkSync(testDb); } catch {}
+    }
+  });
+  test('profile-aware capability scoping restricts inactive organelles', () => {
+    // 1. In dev-workspace, mobile and 3D are inactive
+    const devWorkspaceCaps = selectCapabilitiesForTask('tap android button and render blender mesh', {
+      profile: 'dev-workspace'
+    });
+    assert.ok(!devWorkspaceCaps.includes('android.control'), 'dev-workspace must not include android.control');
+    assert.ok(!devWorkspaceCaps.includes('blender.model'), 'dev-workspace must not include blender.model');
+
+    // 2. In headless-server, browser and mobile are inactive
+    const headlessCaps = selectCapabilitiesForTask('scrape web page using browser and click button', {
+      profile: 'headless-server'
+    });
+    assert.ok(!headlessCaps.includes('browser.observe'), 'headless-server must not include browser.observe');
+    assert.ok(!headlessCaps.includes('browser.act'), 'headless-server must not include browser.act');
+
+    // 3. In 3d-modeling, blender.model is active and prioritized
+    const modelingCaps = selectCapabilitiesForTask('render blender mesh', {
+      profile: '3d-modeling'
+    });
+    assert.ok(modelingCaps.includes('blender.model'), '3d-modeling must include blender.model');
+
+    // 4. In all or unset, full capability catalog is available
+    const allCaps = selectCapabilitiesForTask('tap android screen and control device', {
+      profile: 'all'
+    });
+    assert.ok(allCaps.includes('android.control'), 'profile all must include android.control');
+
+    // 5. HELA_PROFILE env fallback works
+    process.env.HELA_PROFILE = 'dev-workspace';
+    try {
+      const envCaps = selectCapabilitiesForTask('tap android screen');
+      assert.ok(!envCaps.includes('android.control'), 'HELA_PROFILE env must filter android.control in dev-workspace');
+    } finally {
+      delete process.env.HELA_PROFILE;
     }
   });
 });
