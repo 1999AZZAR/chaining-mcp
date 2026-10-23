@@ -83,12 +83,21 @@
     }
   },
   {
-    "name": "palette_fetch",
+    "name": "palette",
     "server": "hela-phenotype",
-    "description": "Fetch live color palettes from Color Hunt.",
+    "description": "Fetch live palettes from Color Hunt, convert palette JSON into CSS/Tailwind/SCSS/Figma/Android/Swift, or generate light/dark/high-contrast/muted/vivid variants. Select action: fetch, convert, or variants.",
     "parameters": {
       "type": "object",
       "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "fetch",
+            "convert",
+            "variants"
+          ],
+          "description": "Palette operation"
+        },
         "mode": {
           "type": "string",
           "enum": [
@@ -98,7 +107,7 @@
             "theme",
             "query"
           ],
-          "description": "Fetch mode"
+          "description": "Fetch mode (required for fetch)"
         },
         "theme": {
           "type": "string",
@@ -119,24 +128,11 @@
             "css",
             "tailwind"
           ],
-          "description": "Output format (default json)"
-        }
-      },
-      "required": [
-        "mode"
-      ]
-    }
-  },
-  {
-    "name": "palette_convert",
-    "server": "hela-phenotype",
-    "description": "Convert palette JSON from palette_fetch into CSS, Tailwind, SCSS, Figma tokens, Android XML, or Swift.",
-    "parameters": {
-      "type": "object",
-      "properties": {
+          "description": "Fetch output format (default json)"
+        },
         "palettes": {
           "type": "array",
-          "description": "Palette array from palette_fetch JSON output"
+          "description": "Palette array required for convert"
         },
         "target": {
           "type": "string",
@@ -148,12 +144,18 @@
             "android",
             "swift"
           ],
-          "description": "Output format"
+          "description": "Conversion target (required for convert)"
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Hex colors required for variants, e.g. [\"#3b82f6\"]"
         }
       },
       "required": [
-        "palettes",
-        "target"
+        "action"
       ]
     }
   },
@@ -175,24 +177,107 @@
     }
   },
   {
-    "name": "generate_tailwind_config",
+    "name": "design_tokens",
     "server": "hela-phenotype",
-    "description": "Generate a ready-to-use tailwind.config.js for a design style + palette combination. Returns the full config object and module.exports code string.",
+    "description": "Generate design tokens. Select action: theme (named theme or genre), custom (OKLCH paper/accent + fonts), css (vanilla/CSS Modules/SCSS/variables-only), or tailwind (complete tailwind.config.js).",
     "parameters": {
       "type": "object",
       "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "theme",
+            "custom",
+            "css",
+            "tailwind"
+          ],
+          "description": "Token generation mode"
+        },
+        "theme_name": {
+          "type": "string",
+          "description": "Named theme for theme action: Specimen|Atelier|Newsprint|Studio|Manifesto|Brutal|Terminal|Midnight|Bloom|Aurora|Cobalt|Coral|Hum|Garden|Sport|Carnival"
+        },
+        "genre": {
+          "type": "string",
+          "enum": [
+            "editorial",
+            "modern-minimal",
+            "atmospheric",
+            "playful"
+          ],
+          "description": "Genre for theme action (ignored if theme_name is set)"
+        },
+        "last_theme": {
+          "type": "string",
+          "description": "Previous theme name for diversification"
+        },
+        "last_accent": {
+          "type": "string",
+          "description": "Previous accent hue for diversification"
+        },
+        "paper_l": {
+          "type": "number",
+          "description": "Custom paper lightness (0-100)"
+        },
+        "paper_c": {
+          "type": "number",
+          "description": "Custom paper chroma (0-50)"
+        },
+        "paper_h": {
+          "type": "number",
+          "description": "Custom paper hue (0-360)"
+        },
+        "accent_l": {
+          "type": "number",
+          "description": "Custom accent lightness (0-100)"
+        },
+        "accent_c": {
+          "type": "number",
+          "description": "Custom accent chroma (0-50)"
+        },
+        "accent_h": {
+          "type": "number",
+          "description": "Custom accent hue (0-360)"
+        },
+        "font_display": {
+          "type": "string",
+          "description": "Display font stack for custom action"
+        },
+        "font_body": {
+          "type": "string",
+          "description": "Body font stack for custom action"
+        },
+        "font_mono": {
+          "type": "string",
+          "description": "Optional mono font stack for custom action"
+        },
         "style": {
           "type": "string",
-          "description": "Design system: ant|carbon|fluent|atlassian|apple-hig|polaris|material|minimal|glass|neumorphism|neo-brutalism|claymorphism|skeuomorphism|swiss|swiss-archival|m3-pastel|neo-m3"
+          "description": "Design system slug for css/tailwind actions (e.g. glass, minimal, material)"
         },
         "palette": {
           "type": "string",
-          "description": "Color palette: pastel|dark|vibrant|mono"
+          "enum": [
+            "pastel",
+            "dark",
+            "vibrant",
+            "mono"
+          ],
+          "description": "Color palette for css/tailwind actions"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "vanilla",
+            "css-modules",
+            "scss",
+            "css-variables-only"
+          ],
+          "description": "Output format for css action"
         }
       },
       "required": [
-        "style",
-        "palette"
+        "action"
       ]
     }
   },
@@ -268,58 +353,48 @@
     }
   },
   {
-    "name": "audit_accessibility",
+    "name": "design_audit",
     "server": "hela-phenotype",
-    "description": "Run a 25-check WCAG 2.1 accessibility audit on HTML content. Covers: missing alt text, unlabeled inputs/selects/textareas, empty buttons/links, missing lang/title, heading order violations, focus-visible removal, positive tabindex, skip links, viewport scale lock, landmark regions, and more. Returns a 0-100 score, A-F grade, per-severity issue counts, actionable fix instructions per issue, and a list of passed checks.",
+    "description": "Audit design work. Select action: accessibility (25-check WCAG 2.1), slop (35-gate anti-pattern check), critique (6-axis quality score), or preflight (scan an existing project's design tokens and stack).",
     "parameters": {
       "type": "object",
       "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "accessibility",
+            "slop",
+            "critique",
+            "preflight"
+          ],
+          "description": "Audit mode"
+        },
         "html": {
           "type": "string",
-          "description": "Full HTML string to audit"
+          "description": "Full HTML required for accessibility"
+        },
+        "content": {
+          "type": "string",
+          "description": "HTML/CSS required for slop and critique"
+        },
+        "genre": {
+          "type": "string",
+          "enum": [
+            "editorial",
+            "modern-minimal",
+            "atmospheric",
+            "playful"
+          ],
+          "default": "editorial",
+          "description": "Genre for scoped slop gates"
+        },
+        "project_path": {
+          "type": "string",
+          "description": "Project root for preflight (defaults to MCP root)"
         }
       },
       "required": [
-        "html"
-      ]
-    }
-  },
-  {
-    "name": "generate_css_output",
-    "server": "hela-phenotype",
-    "description": "Generate framework-agnostic CSS output from a design style and palette. Supports vanilla CSS (tokens.css + base.css + components.css), CSS Modules (Button/Card/Input .module.css with all 8 states), SCSS (variables + mixins + BEM components), and css-variables-only (tokens with auto dark mode @media and [data-theme='dark']). Returns an array of named files ready to save to disk.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "style": {
-          "type": "string",
-          "description": "Design system slug (e.g. glass, neo-brutalism, minimal, material)"
-        },
-        "palette": {
-          "type": "string",
-          "enum": [
-            "pastel",
-            "dark",
-            "vibrant",
-            "mono"
-          ],
-          "description": "Color palette"
-        },
-        "format": {
-          "type": "string",
-          "enum": [
-            "vanilla",
-            "css-modules",
-            "scss",
-            "css-variables-only"
-          ],
-          "description": "Output format"
-        }
-      },
-      "required": [
-        "style",
-        "palette",
-        "format"
+        "action"
       ]
     }
   },
@@ -345,26 +420,6 @@
       },
       "required": [
         "category"
-      ]
-    }
-  },
-  {
-    "name": "generate_palette_variants",
-    "server": "hela-phenotype",
-    "description": "Generate light, dark, high-contrast, muted, and vivid variants from a set of hex colors. Useful for theming and responsive color systems.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "colors": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Array of hex color strings, e.g. [\"#3b82f6\", \"#8b5cf6\"]"
-        }
-      },
-      "required": [
-        "colors"
       ]
     }
   },
@@ -440,97 +495,6 @@
     }
   },
   {
-    "name": "pre_flight_scan",
-    "server": "hela-phenotype",
-    "description": "Scan an existing project directory and detect framework, font stack, palette tokens, motion libraries, and spacing scale before designing. Returns structured pre-flight findings with preservation/introduction recommendations.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "project_path": {
-          "type": "string",
-          "description": "Absolute path to the project root. Defaults to MCP root if omitted."
-        }
-      }
-    }
-  },
-  {
-    "name": "anti_pattern_check",
-    "server": "hela-phenotype",
-    "description": "Run a 35-gate quality checklist (slop test) against HTML/CSS content. Detects common AI design tells: italic headers, em-in-heading, dummy section tags, fabricated metrics, fake chrome, specimen fall-through, hanging headers, generic CTA, glass on white, missing a11y, and more. Specify genre to scope genre-specific gates.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "content": {
-          "type": "string",
-          "description": "HTML or CSS content to check"
-        },
-        "genre": {
-          "type": "string",
-          "enum": [
-            "editorial",
-            "modern-minimal",
-            "atmospheric",
-            "playful"
-          ],
-          "default": "editorial",
-          "description": "Genre for scoped gate application"
-        }
-      },
-      "required": [
-        "content"
-      ]
-    }
-  },
-  {
-    "name": "self_critique",
-    "server": "hela-phenotype",
-    "description": "Score output on 6 quality axes (Philosophy, Hierarchy, Execution, Specificity, Restraint, Variety) before shipping. Returns 1-5 per axis and a summary score. Anything < 3 triggers a revision pass.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "content": {
-          "type": "string",
-          "description": "HTML/CSS content to score"
-        }
-      },
-      "required": [
-        "content"
-      ]
-    }
-  },
-  {
-    "name": "generate_tokens",
-    "server": "hela-phenotype",
-    "description": "Generate a complete design token system (tokens.css) based on a named theme or genre. Returns CSS custom properties for colors (OKLCH), fonts, spacing, text sizes, easings, durations, and radii. Can also output a Tailwind v4 @theme block.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "theme_name": {
-          "type": "string",
-          "description": "Named theme: Specimen|Atelier|Newsprint|Studio|Manifesto|Brutal|Terminal|Midnight|Bloom|Aurora|Cobalt|Coral|Hum|Garden|Sport|Carnival"
-        },
-        "genre": {
-          "type": "string",
-          "enum": [
-            "editorial",
-            "modern-minimal",
-            "atmospheric",
-            "playful"
-          ],
-          "description": "Genre to pick a theme from (ignored if theme_name provided)"
-        },
-        "last_theme": {
-          "type": "string",
-          "description": "Previous theme name for diversification"
-        },
-        "last_accent": {
-          "type": "string",
-          "description": "Previous accent hue for diversification"
-        }
-      }
-    }
-  },
-  {
     "name": "list_themes",
     "server": "hela-phenotype",
     "description": "List all available named themes, optionally filtered by genre. Each theme includes paper/accent OKLCH values, font pairing, and axis metadata for diversification.",
@@ -592,62 +556,6 @@
     }
   },
   {
-    "name": "build_custom_tokens",
-    "server": "hela-phenotype",
-    "description": "Build a custom OKLCH token system from scratch with paper color, accent color, and font pairing. Use when a brief signals creative-intent (brand color, multi-vibe aesthetic, explicit custom request). Returns tokens.css + Tailwind v4 @theme block.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "paper_l": {
-          "type": "number",
-          "description": "Paper lightness (0-100)"
-        },
-        "paper_c": {
-          "type": "number",
-          "description": "Paper chroma (0-50)"
-        },
-        "paper_h": {
-          "type": "number",
-          "description": "Paper hue (0-360)"
-        },
-        "accent_l": {
-          "type": "number",
-          "description": "Accent lightness (0-100)"
-        },
-        "accent_c": {
-          "type": "number",
-          "description": "Accent chroma (0-50)"
-        },
-        "accent_h": {
-          "type": "number",
-          "description": "Accent hue (0-360)"
-        },
-        "font_display": {
-          "type": "string",
-          "description": "Display font stack, e.g. 'Instrument Serif', Georgia, serif"
-        },
-        "font_body": {
-          "type": "string",
-          "description": "Body font stack, e.g. 'Inter', system-ui, sans-serif"
-        },
-        "font_mono": {
-          "type": "string",
-          "description": "Optional mono font stack (default: JetBrains Mono)"
-        }
-      },
-      "required": [
-        "paper_l",
-        "paper_c",
-        "paper_h",
-        "accent_l",
-        "accent_c",
-        "accent_h",
-        "font_display",
-        "font_body"
-      ]
-    }
-  },
-  {
     "name": "list_ellis_ui_designs",
     "server": "hela-phenotype",
     "description": "List all 24 bespoke Ellis UI component design templates with their specific aesthetic focus.",
@@ -674,79 +582,80 @@
     }
   },
   {
-    "name": "logo_audit",
+    "name": "logo_workflow",
     "server": "hela-phenotype",
-    "description": "Audit one or more logo SVGs: live text, rasters, filters, colour count, gradients, strokes, near-miss angles, tiny details, centring, and complexity versus the reference library. Run this before delivering any mark.",
+    "description": "Logo-design workflow. Select action: audit, search, renderers, render, export_variants, concept_sheet, preview_sheet, or presentation_board. Search queries the 1,400+ mark library; render/export/board actions write files.",
     "parameters": {
       "type": "object",
       "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "audit",
+            "search",
+            "renderers",
+            "render",
+            "export_variants",
+            "concept_sheet",
+            "preview_sheet",
+            "presentation_board"
+          ],
+          "description": "Logo workflow step"
+        },
         "files": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Paths to the SVG file(s) to audit."
+          "description": "SVG file paths for audit, render, concept, or preview"
         },
         "bg": {
           "type": "string",
-          "description": "Background colour to test contrast against, e.g. '#ffffff'."
-        }
-      },
-      "required": [
-        "files"
-      ]
-    }
-  },
-  {
-    "name": "logo_search_library",
-    "server": "hela-phenotype",
-    "description": "Search the library of 1,400+ real-world SVG logos by mark type, technique, geometry, subject, industry, colour, mood, type style and more. Use --summary semantics (summary=true) to learn a category's conventions, format='paths' to get files to open.",
-    "parameters": {
-      "type": "object",
-      "properties": {
+          "description": "Background colour for audit/render"
+        },
         "type": {
           "type": "string",
-          "description": "wordmark|lettermark|letterform|pictorial|abstract|mascot|emblem|combination"
+          "description": "Search mark type"
         },
         "symbolType": {
           "type": "string",
-          "description": "Symbol type inside a combination mark"
+          "description": "Search symbol type"
         },
         "technique": {
           "type": "string",
-          "description": "e.g. negative-space, geometric-construction, letter-substitution (comma = AND)"
+          "description": "Search technique"
         },
         "geometry": {
           "type": "string",
-          "description": "e.g. circle, hexagon, triangle, organic (comma = AND)"
+          "description": "Search geometry"
         },
         "industry": {
           "type": "string",
-          "description": "e.g. developer-tools, payments-fintech, database-data"
+          "description": "Search industry"
         },
         "subject": {
           "type": "string",
-          "description": "Substring of the visual subject, e.g. bird, shield, cloud"
+          "description": "Search visual subject"
         },
         "query": {
           "type": "string",
-          "description": "Free-text words matched against file name, subject, note, mood"
+          "description": "Free-text library query"
         },
         "mood": {
           "type": "string",
-          "description": "Single mood adjective, e.g. friendly, technical, playful"
+          "description": "Search mood adjective"
         },
         "color": {
           "type": "string",
-          "description": "Colour family present anywhere: red|orange|yellow|green|cyan|blue|purple|pink|black|white|gray"
+          "description": "Search colour family"
         },
         "primaryColor": {
           "type": "string",
-          "description": "Dominant family: a hue, 'multi' or 'mono'"
+          "description": "Dominant colour family"
         },
         "aspect": {
           "type": "string",
-          "description": "square|wide|horizontal|extra-wide|tall"
+          "description": "Search aspect ratio"
         },
         "variant": {
           "type": "string",
@@ -754,31 +663,31 @@
         },
         "typeStyle": {
           "type": "string",
-          "description": "geometric-sans|grotesque-sans|humanist-sans|rounded-sans|serif|slab|script|display-custom|monospace"
+          "description": "Search type style"
         },
         "case": {
           "type": "string",
-          "description": "lowercase|uppercase|titlecase|mixed"
+          "description": "Search letter case"
         },
         "minColors": {
           "type": "number",
-          "description": "Minimum distinct colour count"
+          "description": "Minimum distinct colours"
         },
         "maxColors": {
           "type": "number",
-          "description": "Maximum distinct colour count"
+          "description": "Maximum distinct colours"
         },
         "noGradient": {
           "type": "boolean",
-          "description": "Only marks with no gradient"
+          "description": "Exclude gradients"
         },
         "exemplary": {
           "type": "boolean",
-          "description": "Only strong teaching examples"
+          "description": "Only teaching examples"
         },
         "limit": {
           "type": "number",
-          "description": "Max results (default 25)"
+          "description": "Max search results (default 25)"
         },
         "format": {
           "type": "string",
@@ -787,78 +696,47 @@
             "paths",
             "json"
           ],
-          "description": "Output shape (default json)"
+          "description": "Search output shape"
         },
         "summary": {
           "type": "boolean",
-          "description": "Aggregate view: conventions of the matching set"
+          "description": "Aggregate library view"
         },
         "listValues": {
           "type": "boolean",
-          "description": "Print allowed values for every filter"
-        }
-      },
-      "required": []
-    }
-  },
-  {
-    "name": "logo_renderers",
-    "server": "hela-phenotype",
-    "description": "List which SVG rendering backends are available on this machine (cairosvg, rsvg-convert, Inkscape, headless Chrome, macOS Quick Look). Use before promising a PNG deliverable.",
-    "parameters": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "logo_render",
-    "server": "hela-phenotype",
-    "description": "Render logo SVG to transparent PNG at exact sizes, screenshot an HTML sheet, or build a favicon.ico. This is how you look at your own work — render, then view the PNG.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "files": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "SVG files to render, or an HTML sheet to screenshot."
+          "description": "Print filter values"
         },
         "out": {
           "type": "string",
-          "description": "Output PNG path (single input only)"
+          "description": "Output PNG/HTML path"
         },
         "outDir": {
           "type": "string",
-          "description": "Output folder for a batch"
+          "description": "Output directory"
         },
         "size": {
           "type": "number",
-          "description": "Square size in px"
+          "description": "Square PNG size"
         },
         "width": {
           "type": "number",
-          "description": "Output width in px"
+          "description": "PNG width"
         },
         "height": {
           "type": "number",
-          "description": "Output height in px"
+          "description": "PNG height"
         },
         "padding": {
           "type": "number",
-          "description": "Padding as a fraction of the canvas (0-0.4)"
-        },
-        "bg": {
-          "type": "string",
-          "description": "Background colour (default transparent)"
+          "description": "Padding fraction (0-0.4)"
         },
         "backend": {
           "type": "string",
-          "description": "Force a backend, e.g. chrome"
+          "description": "Renderer backend"
         },
         "ico": {
           "type": "string",
-          "description": "Write a favicon .ico from the first input"
+          "description": "Favicon .ico output path"
         },
         "icoSizes": {
           "type": "array",
@@ -866,130 +744,88 @@
             "type": "number"
           },
           "description": "ICO sizes, e.g. [16,32,48]"
-        }
-      },
-      "required": [
-        "files"
-      ]
-    }
-  },
-  {
-    "name": "logo_export_variants",
-    "server": "hela-phenotype",
-    "description": "From a master logo SVG, produce the delivery set: black, white, one-colour, square, favicon and app-icon variants, optional PNG sizes, and --web-icons (favicon.ico + PNG icon set + webmanifest + <head> snippet).",
-    "parameters": {
-      "type": "object",
-      "properties": {
+        },
         "master": {
           "type": "string",
-          "description": "Path to the master logo SVG"
-        },
-        "outDir": {
-          "type": "string",
-          "description": "Output directory"
+          "description": "Master SVG for export_variants"
         },
         "name": {
           "type": "string",
-          "description": "Base name for outputs (default: master file name)"
+          "description": "Brand/output base name"
         },
         "title": {
           "type": "string",
-          "description": "Accessible <title> for every output, e.g. 'Harbor logo'"
+          "description": "Accessible output title"
         },
         "mono": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Extra one-colour versions as hex, e.g. ['#0F7C80']"
+          "description": "Extra one-colour hex variants"
         },
         "iconBg": {
           "type": "string",
-          "description": "App-icon / maskable tile colour (default #111111)"
+          "description": "App-icon tile colour"
         },
         "iconFg": {
           "type": "string",
-          "description": "Mark colour on tiles, or 'keep' for original colours"
+          "description": "Mark colour on app-icon tile"
         },
         "iconScale": {
           "type": "number",
-          "description": "Mark size on the app-icon tile, 0.55-0.7 typical"
+          "description": "Mark size on app-icon tile"
         },
         "opticalOffset": {
           "type": "number",
-          "description": "Vertical nudge for square outputs, -0.4 to 0.4 (negative = up)"
+          "description": "Vertical square-output nudge"
         },
         "faviconSource": {
           "type": "string",
-          "description": "Simplified small-size drawing used for favicon/app-icon/web icons"
+          "description": "Simplified favicon SVG"
         },
         "keepWhite": {
           "type": "boolean",
-          "description": "Leave pure-white paint untouched in one-colour versions"
+          "description": "Keep pure white in mono variants"
         },
         "only": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Subset: black, white, mono, square, favicon, app-icon"
+          "description": "Variant subset: black, white, mono, square, favicon, app-icon"
         },
         "png": {
           "type": "array",
           "items": {
             "type": "number"
           },
-          "description": "PNG sizes for every SVG variant written"
+          "description": "PNG sizes for export variants"
         },
         "webIcons": {
           "type": "boolean",
-          "description": "Also emit favicon.ico + PNG icon set + webmanifest + head snippet"
-        }
-      },
-      "required": [
-        "master",
-        "outDir"
-      ]
-    }
-  },
-  {
-    "name": "logo_concept_sheet",
-    "server": "hela-phenotype",
-    "description": "One-image concept overview: large mark, lockup, true 64/32/16 px sizes, name, one-line idea and recommendation per concept. This is the artefact to show at the concept checkpoint, before building the production kit.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "files": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "One SVG per concept (usually the symbol)."
+          "description": "Emit favicon/web icon set"
         },
         "lockups": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Optional second file per concept (lockup/wordmark)"
+          "description": "Lockup SVG per concept"
         },
         "names": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Name per concept"
+          "description": "Concept labels"
         },
         "notes": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "One-sentence idea per concept"
-        },
-        "title": {
-          "type": "string",
-          "description": "Sheet title"
+          "description": "One-line concept ideas"
         },
         "subtitle": {
           "type": "string",
@@ -997,105 +833,51 @@
         },
         "recommend": {
           "type": "number",
-          "description": "1-based index of the recommended concept"
+          "description": "1-based recommended concept"
         },
         "greyscale": {
           "type": "boolean",
-          "description": "Show everything in greyscale (first-round rule)"
-        },
-        "out": {
-          "type": "string",
-          "description": "Output PNG path (default ./concepts.png)"
-        }
-      },
-      "required": [
-        "files"
-      ]
-    }
-  },
-  {
-    "name": "logo_preview_sheet",
-    "server": "hela-phenotype",
-    "description": "HTML test sheet for a logo: size ladder, 16/32 px pixel test, backgrounds, one-colour, squint blur, mirror/rotate, favicon/app-icon/header/card contexts, side-by-side, and a shelf test versus category competitors.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "files": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Logo SVG(s) to test."
-        },
-        "out": {
-          "type": "string",
-          "description": "Output HTML path (default ./logo-preview.html)"
-        },
-        "name": {
-          "type": "string",
-          "description": "Brand name used in mock contexts"
-        },
-        "names": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Labels per file"
+          "description": "Render concepts in greyscale"
         },
         "brandColor": {
           "type": "string",
-          "description": "Brand colour for background/app-icon tests"
+          "description": "Preview brand colour"
         },
         "refs": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Reference SVGs for the shelf test"
+          "description": "Reference SVGs for shelf test"
         },
         "refsIndustry": {
           "type": "string",
-          "description": "Pull shelf references from the library by industry"
+          "description": "Shelf reference industry"
         },
         "refsCount": {
           "type": "number",
-          "description": "How many shelf references (default 11)"
+          "description": "Shelf reference count"
         },
         "compareOnly": {
           "type": "boolean",
-          "description": "Only the side-by-side section"
-        }
-      },
-      "required": [
-        "files"
-      ]
-    }
-  },
-  {
-    "name": "logo_presentation_board",
-    "server": "hela-phenotype",
-    "description": "Client presentation from a JSON spec: brief, each concept with rationale and industry-specific mockups, comparison, recommendation. Exports HTML, or every slide as PNG with pngDir.",
-    "parameters": {
-      "type": "object",
-      "properties": {
+          "description": "Preview side-by-side only"
+        },
         "spec": {
           "type": "string",
-          "description": "Path to a presentation spec JSON (see skills/logo-design/templates/presentation-spec.example.json)"
-        },
-        "out": {
-          "type": "string",
-          "description": "Output HTML path (default presentation.html)"
+          "description": "Presentation spec JSON path"
         },
         "pngDir": {
           "type": "string",
-          "description": "Also export every slide as slide-NN.png (needs Chrome/Chromium)"
+          "description": "Presentation slide PNG directory"
         },
         "listMockups": {
           "type": "boolean",
-          "description": "List available industry mockups and exit"
+          "description": "List presentation mockups"
         }
       },
-      "required": []
+      "required": [
+        "action"
+      ]
     }
   },
   {
@@ -1148,12 +930,22 @@
     }
   },
   {
-    "name": "stitch_get",
+    "name": "stitch_resource",
     "server": "hela-phenotype",
-    "description": "Fetches one Stitch resource by id (project, screen, design-system, status). Mirrors 'stitch get <resource> <id>'. Returns { resource, item, availableActions? }.",
+    "description": "Read, edit, or delete one Stitch resource, or print its canonical canvas URL. Select action: get, edit, delete, or url.",
     "parameters": {
       "type": "object",
       "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "get",
+            "edit",
+            "delete",
+            "url"
+          ],
+          "description": "Stitch resource operation"
+        },
         "resource": {
           "type": "string",
           "enum": [
@@ -1165,11 +957,11 @@
             "design-system",
             "status"
           ],
-          "description": "Resource type to fetch"
+          "description": "Resource type (get/edit/delete; url uses project|screen)"
         },
         "id": {
           "type": "string",
-          "description": "ID of the resource to fetch (omit for status)"
+          "description": "Resource ID (omit only for status)"
         },
         "project": {
           "type": "string",
@@ -1178,10 +970,14 @@
         "workspace": {
           "type": "string",
           "description": "Workspace ID override"
+        },
+        "body": {
+          "type": "object",
+          "description": "Fields to update for edit"
         }
       },
       "required": [
-        "resource"
+        "action"
       ]
     }
   },
@@ -1270,71 +1066,6 @@
     }
   },
   {
-    "name": "stitch_edit",
-    "server": "hela-phenotype",
-    "description": "Updates mutable fields on a Stitch resource. Mirrors 'stitch edit <resource> <id>'.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "resource": {
-          "type": "string",
-          "description": "Resource type to edit"
-        },
-        "id": {
-          "type": "string",
-          "description": "Resource ID to edit"
-        },
-        "body": {
-          "type": "object",
-          "description": "Fields to update"
-        },
-        "project": {
-          "type": "string",
-          "description": "Stitch Canvas project ID"
-        },
-        "workspace": {
-          "type": "string",
-          "description": "Workspace ID override"
-        }
-      },
-      "required": [
-        "resource",
-        "id",
-        "body"
-      ]
-    }
-  },
-  {
-    "name": "stitch_delete",
-    "server": "hela-phenotype",
-    "description": "Deletes a Stitch resource by ID. Mirrors 'stitch delete <resource> <id>'.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "resource": {
-          "type": "string",
-          "description": "Resource type to delete"
-        },
-        "id": {
-          "type": "string",
-          "description": "Resource ID to delete"
-        },
-        "project": {
-          "type": "string",
-          "description": "Stitch Canvas project ID"
-        },
-        "workspace": {
-          "type": "string",
-          "description": "Workspace ID override"
-        }
-      },
-      "required": [
-        "resource",
-        "id"
-      ]
-    }
-  },
-  {
     "name": "stitch_generate",
     "server": "hela-phenotype",
     "description": "Triggers a backend generative creation job for Stitch screens or variants. Mirrors 'stitch generate <resource>'.",
@@ -1381,35 +1112,6 @@
         "dryRun": {
           "type": "boolean",
           "description": "Validate arguments and preview without starting job"
-        }
-      },
-      "required": [
-        "resource"
-      ]
-    }
-  },
-  {
-    "name": "stitch_url",
-    "server": "hela-phenotype",
-    "description": "Prints the canonical Stitch Canvas web URL for a project or screen. Mirrors 'stitch url <resource> <id>'.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "resource": {
-          "type": "string",
-          "enum": [
-            "project",
-            "screen"
-          ],
-          "description": "Target resource type"
-        },
-        "id": {
-          "type": "string",
-          "description": "Project or screen ID"
-        },
-        "project": {
-          "type": "string",
-          "description": "Stitch Canvas project ID"
         }
       },
       "required": [
@@ -5274,265 +4976,33 @@
     }
   },
   {
-    "name": "update_data",
+    "name": "execute_sql",
     "server": "hela-genome",
-    "description": "Update records in memory.db table",
+    "description": "Canonical memory-graph SQL inspection (use instead of hela-ribosome opencode_db). Execute raw SQL query on the project or central memory database (database: 'project' | 'central', default 'project')",
     "parameters": {
+      "type": "object",
       "properties": {
-        "conditions": {
-          "description": "WHERE conditions",
-          "type": "object"
-        },
         "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
+          "type": "string",
           "enum": [
             "project",
             "central"
           ],
-          "type": "string"
-        },
-        "table": {
-          "description": "Table name",
-          "type": "string"
-        },
-        "updates": {
-          "description": "Fields to update",
-          "type": "object"
-        }
-      },
-      "required": [
-        "table",
-        "conditions",
-        "updates"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "sync_harness_sessions",
-    "server": "hela-genome",
-    "description": "Read-only sync of harness sessions (titles, summaries, timestamps; secrets redacted) into the project knowledge graph as session entities. Incremental via watermarks; supports dry-run.",
-    "parameters": {
-      "properties": {
-        "dryRun": {
-          "description": "Report what would sync without writing",
-          "type": "boolean"
-        },
-        "harnesses": {
-          "description": "Harnesses to sync (default: all found)",
-          "items": {
-            "enum": [
-              "opencode",
-              "kilocode",
-              "zed",
-              "delta",
-              "antigravity",
-              "cursor",
-              "vscode",
-              "codex"
-            ],
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "includeArchived": {
-          "description": "Include archived sessions (default false)",
-          "type": "boolean"
-        },
-        "limit": {
-          "description": "Max sessions per harness (default 50, max 500)",
-          "type": "number"
-        },
-        "project": {
-          "description": "Substring filter on session project/directory",
-          "type": "string"
-        },
-        "since": {
-          "description": "Only sessions updated after this ms epoch",
-          "type": "number"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "sync_central_memory",
-    "server": "hela-genome",
-    "description": "Sync the active project knowledge graph into the central memory database (~/memory/memory.db by default) so all projects share one searchable map",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {},
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "stop_ui",
-    "server": "hela-genome",
-    "description": "Alias for close_ui — stop the Web UI server.",
-    "parameters": {
-      "properties": {},
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "start_ui",
-    "server": "hela-genome",
-    "description": "Start the Project Guardian Web UI server on demand. Automatically searches for a free port and returns the local HTTP URL.",
-    "parameters": {
-      "properties": {},
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "setup_pre_commit",
-    "server": "hela-genome",
-    "description": "Create a .pre-commit-config.yaml in the active project root and install the Git hooks, on demand. Requires pre-commit to be installed",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {},
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "set_project_root",
-    "server": "hela-genome",
-    "description": "Switch the active project memory database to the given absolute project path. Use at session start when the server was launched outside the project directory",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "description": "Absolute path to the project root",
-          "pattern": "^/",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "search_nodes",
-    "server": "hela-genome",
-    "description": "Search project entities and relations with hybrid RAG and progressive disclosure",
-    "parameters": {
-      "properties": {
-        "detailLevel": {
-          "description": "Progressive disclosure level (compact: token-saving IDs & previews, summary: recent observations, full: complete graph)",
-          "enum": [
-            "compact",
-            "summary",
-            "full"
-          ],
-          "type": "string"
-        },
-        "limit": {
-          "description": "Max items to return (1-100, default 20)",
-          "type": "number"
-        },
-        "mode": {
-          "description": "Search mode (default keyword)",
-          "enum": [
-            "keyword",
-            "vector",
-            "hybrid"
-          ],
-          "type": "string"
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
         },
         "query": {
-          "description": "Search term for entities and relations",
-          "type": "string"
+          "type": "string",
+          "description": "SQL query to execute"
+        },
+        "parameters": {
+          "type": "array",
+          "description": "Query parameters"
         }
       },
       "required": [
         "query"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "scan_project_secrets",
-    "server": "hela-genome",
-    "description": "Scan a workspace-relative path for likely hardcoded credentials without exposing values",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
-        "exclude": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "maxFindings": {
-          "default": 100,
-          "maximum": 500,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "path": {
-          "default": ".",
-          "type": "string"
-        }
-      },
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "scan_container_image",
-    "server": "hela-genome",
-    "description": "Scan a container image for HIGH and CRITICAL vulnerabilities using Trivy",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
-        "image": {
-          "type": "string"
-        },
-        "maxFindings": {
-          "default": 100,
-          "maximum": 500,
-          "minimum": 1,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "image"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "read_graph_stream",
-    "server": "hela-genome",
-    "description": "Stream the knowledge graph with cursor pagination (500/page, updated_at DESC). Returns entities, relations, nextCursor.",
-    "parameters": {
-      "properties": {
-        "cursor": {
-          "description": "Base64url cursor from previous nextCursor",
-          "type": "string"
-        },
-        "limit": {
-          "description": "Max entities per page (1-1000, default 500)",
-          "type": "number"
-        }
-      },
-      "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "read_graph",
-    "server": "hela-genome",
-    "description": "Read the entire project knowledge graph",
-    "parameters": {
-      "properties": {},
-      "type": "object"
+      ]
     }
   },
   {
@@ -5540,100 +5010,52 @@
     "server": "hela-genome",
     "description": "Canonical memory-graph table query (use instead of hela-ribosome opencode_db). Query data from project or central memory tables (database: 'project' | 'central', default 'project')",
     "parameters": {
+      "type": "object",
       "properties": {
-        "conditions": {
-          "description": "WHERE conditions",
-          "type": "object"
-        },
         "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
+          "type": "string",
           "enum": [
             "project",
             "central"
           ],
-          "type": "string"
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "WHERE conditions"
         },
         "limit": {
-          "description": "Maximum number of rows",
-          "maximum": 10000,
+          "type": "number",
           "minimum": 1,
-          "type": "number"
+          "maximum": 10000,
+          "description": "Maximum number of rows"
         },
         "offset": {
-          "description": "Number of rows to skip",
+          "type": "number",
           "minimum": 0,
-          "type": "number"
+          "description": "Number of rows to skip"
         },
         "orderBy": {
-          "description": "Column to order by",
-          "type": "string"
+          "type": "string",
+          "description": "Column to order by"
         },
         "orderDirection": {
-          "description": "Sort direction",
+          "type": "string",
           "enum": [
             "ASC",
             "DESC"
           ],
-          "type": "string"
-        },
-        "table": {
-          "description": "Table name",
-          "type": "string"
+          "description": "Sort direction"
         }
       },
       "required": [
         "table"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "open_node",
-    "server": "hela-genome",
-    "description": "Get detailed information about project entity/entities",
-    "parameters": {
-      "properties": {
-        "names": {
-          "description": "Entity names to retrieve (supports single or batch)",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "names"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "list_harness_stores",
-    "server": "hela-genome",
-    "description": "List local agent-harness session stores (opencode, kilocode, zed, delta, antigravity, cursor, vscode, codex): paths, presence, and format notes. Read-only; never touches harness processes.",
-    "parameters": {
-      "properties": {},
-      "type": "object"
-    }
-  },
-  {
-    "name": "inspect_untrusted_text",
-    "server": "hela-genome",
-    "description": "Normalize untrusted text and detect common prompt-injection indicators",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
-        "text": {
-          "description": "Untrusted text, maximum 256 KiB",
-          "type": "string"
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "type": "object"
+      ]
     }
   },
   {
@@ -5641,42 +5063,100 @@
     "server": "hela-genome",
     "description": "Insert records into a project or central memory table (database: 'project' | 'central', default 'project')",
     "parameters": {
+      "type": "object",
       "properties": {
         "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
+          "type": "string",
           "enum": [
             "project",
             "central"
           ],
-          "type": "string"
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name"
         },
         "records": {
-          "description": "Array of records to insert",
+          "type": "array",
           "items": {
             "type": "object"
           },
-          "type": "array"
-        },
-        "table": {
-          "description": "Table name",
-          "type": "string"
+          "description": "Array of records to insert"
         }
       },
       "required": [
         "table",
         "records"
-      ],
-      "type": "object"
+      ]
     }
   },
   {
-    "name": "initialize_memory",
+    "name": "update_data",
     "server": "hela-genome",
-    "description": "Initialize the project memory system and database schema",
+    "description": "Update records in memory.db table",
     "parameters": {
-      "properties": {},
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "database": {
+          "type": "string",
+          "enum": [
+            "project",
+            "central"
+          ],
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "WHERE conditions"
+        },
+        "updates": {
+          "type": "object",
+          "description": "Fields to update"
+        }
+      },
+      "required": [
+        "table",
+        "conditions",
+        "updates"
+      ]
+    }
+  },
+  {
+    "name": "delete_data",
+    "server": "hela-genome",
+    "description": "Delete records from memory.db table",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "database": {
+          "type": "string",
+          "enum": [
+            "project",
+            "central"
+          ],
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "WHERE conditions"
+        }
+      },
+      "required": [
+        "table",
+        "conditions"
+      ]
     }
   },
   {
@@ -5684,56 +5164,352 @@
     "server": "hela-genome",
     "description": "Import data from file into memory.db table",
     "parameters": {
+      "type": "object",
       "properties": {
         "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
+          "type": "string",
           "enum": [
             "project",
             "central"
           ],
-          "type": "string"
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name"
         },
         "filePath": {
-          "description": "Path to the file",
-          "type": "string"
+          "type": "string",
+          "description": "Path to the file"
         },
         "format": {
-          "default": "csv",
-          "description": "File format",
+          "type": "string",
           "enum": [
             "csv",
             "json"
           ],
-          "type": "string"
+          "default": "csv",
+          "description": "File format"
         },
         "options": {
+          "type": "object",
           "properties": {
             "delimiter": {
-              "description": "CSV delimiter",
-              "type": "string"
-            },
-            "encoding": {
-              "description": "File encoding",
-              "type": "string"
+              "type": "string",
+              "description": "CSV delimiter"
             },
             "hasHeader": {
-              "description": "CSV has header row",
-              "type": "boolean"
+              "type": "boolean",
+              "description": "CSV has header row"
+            },
+            "encoding": {
+              "type": "string",
+              "description": "File encoding"
             }
-          },
-          "type": "object"
-        },
-        "table": {
-          "description": "Table name",
-          "type": "string"
+          }
         }
       },
       "required": [
         "table",
         "filePath"
-      ],
-      "type": "object"
+      ]
+    }
+  },
+  {
+    "name": "export_data",
+    "server": "hela-genome",
+    "description": "Export memory.db table data to file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "database": {
+          "type": "string",
+          "enum": [
+            "project",
+            "central"
+          ],
+          "description": "Target store: active project database or central aggregate",
+          "default": "project"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name"
+        },
+        "filePath": {
+          "type": "string",
+          "description": "Output file path"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "json"
+          ],
+          "default": "csv",
+          "description": "Output format"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "WHERE conditions"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "delimiter": {
+              "type": "string",
+              "description": "CSV delimiter"
+            },
+            "includeHeader": {
+              "type": "boolean",
+              "description": "Include header in CSV"
+            },
+            "encoding": {
+              "type": "string",
+              "description": "File encoding"
+            }
+          }
+        }
+      },
+      "required": [
+        "table",
+        "filePath"
+      ]
+    }
+  },
+  {
+    "name": "initialize_memory",
+    "server": "hela-genome",
+    "description": "Initialize the project memory system and database schema",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "memory_edit",
+    "server": "hela-genome",
+    "description": "Create or delete knowledge-graph entities, relations, and observations. Select the operation with action: create_entities, create_relations, add_observations, delete_entities, delete_observations, or delete_relations.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "create_entities",
+            "create_relations",
+            "add_observations",
+            "delete_entities",
+            "delete_observations",
+            "delete_relations"
+          ],
+          "description": "Mutation to apply"
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Entity name"
+              },
+              "entityType": {
+                "type": "string",
+                "description": "Type (project, task, person, resource)"
+              },
+              "observations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Notes about the entity"
+              }
+            },
+            "required": [
+              "name",
+              "entityType",
+              "observations"
+            ]
+          },
+          "minItems": 1,
+          "description": "Required for create_entities"
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "description": "Source entity name"
+              },
+              "to": {
+                "type": "string",
+                "description": "Target entity name"
+              },
+              "relationType": {
+                "type": "string",
+                "description": "Relationship type (depends_on, blocks, owns, etc.)"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "relationType"
+            ]
+          },
+          "minItems": 1,
+          "description": "Required for create_relations and delete_relations"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entityName": {
+                "type": "string",
+                "description": "Entity name"
+              },
+              "contents": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Observations to add"
+              }
+            },
+            "required": [
+              "entityName",
+              "contents"
+            ]
+          },
+          "minItems": 1,
+          "description": "Required for add_observations"
+        },
+        "entityNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Required for delete_entities"
+        },
+        "deletions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entityName": {
+                "type": "string",
+                "description": "Entity name"
+              },
+              "observations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Observations to remove"
+              }
+            },
+            "required": [
+              "entityName",
+              "observations"
+            ]
+          },
+          "minItems": 1,
+          "description": "Required for delete_observations"
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "read_graph",
+    "server": "hela-genome",
+    "description": "Read the entire project knowledge graph",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "search_nodes",
+    "server": "hela-genome",
+    "description": "Search project entities and relations with hybrid RAG and progressive disclosure",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search term for entities and relations"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max items to return (1-100, default 20)"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "keyword",
+            "vector",
+            "hybrid"
+          ],
+          "description": "Search mode (default keyword)"
+        },
+        "detailLevel": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "summary",
+            "full"
+          ],
+          "description": "Progressive disclosure level (compact: token-saving IDs & previews, summary: recent observations, full: complete graph)"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "name": "open_node",
+    "server": "hela-genome",
+    "description": "Get detailed information about project entity/entities",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Entity names to retrieve (supports single or batch)"
+        }
+      },
+      "required": [
+        "names"
+      ]
+    }
+  },
+  {
+    "name": "get_file_context",
+    "server": "hela-genome",
+    "description": "Get historical memory, recent modifications, linked tasks, and open bugs for a specific file path before editing or reading",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "filePath": {
+          "type": "string",
+          "description": "Relative or absolute file path to look up"
+        }
+      },
+      "required": [
+        "filePath"
+      ]
     }
   },
   {
@@ -5741,39 +5517,21 @@
     "server": "hela-genome",
     "description": "Get a chronological feed of recent observations and project activity",
     "parameters": {
+      "type": "object",
       "properties": {
-        "entityType": {
-          "description": "Filter by entity type (task, bug, decision, file, project)",
-          "type": "string"
-        },
-        "limit": {
-          "description": "Max events to return (1-100, default 20)",
-          "type": "number"
-        },
         "since": {
-          "description": "ISO date string or timestamp filter",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
-    "name": "get_session_context",
-    "server": "hela-genome",
-    "description": "Summarize active tasks, open bugs, recent changes, and blockers from project memory",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
+          "type": "string",
+          "description": "ISO date string or timestamp filter"
+        },
+        "entityType": {
+          "type": "string",
+          "description": "Filter by entity type (task, bug, decision, file, project)"
+        },
         "limit": {
-          "default": 10,
-          "maximum": 50,
-          "minimum": 1,
-          "type": "integer"
+          "type": "number",
+          "description": "Max events to return (1-100, default 20)"
         }
-      },
-      "required": [],
-      "type": "object"
+      }
     }
   },
   {
@@ -5781,12 +5539,10 @@
     "server": "hela-genome",
     "description": "Invoke a project guidance framework to receive specialized instructions and checklists for specific workflows (e.g., project-setup, sprint-planning, code-review, etc.). This allows the AI to autonomously fetch and follow established project management protocols.",
     "parameters": {
+      "type": "object",
       "properties": {
-        "arguments": {
-          "description": "Optional arguments required by the specific guidance framework.",
-          "type": "object"
-        },
         "guidance_name": {
+          "type": "string",
           "description": "The name of the guidance framework to invoke.",
           "enum": [
             "project-setup",
@@ -5816,432 +5572,75 @@
             "cost-management",
             "customer-feedback",
             "innovation-planning"
-          ],
-          "type": "string"
+          ]
+        },
+        "arguments": {
+          "type": "object",
+          "description": "Optional arguments required by the specific guidance framework."
         }
       },
       "required": [
         "guidance_name"
-      ],
-      "type": "object"
+      ]
     }
   },
   {
-    "name": "get_file_context",
+    "name": "sync_central_memory",
     "server": "hela-genome",
-    "description": "Get historical memory, recent modifications, linked tasks, and open bugs for a specific file path before editing or reading",
+    "description": "Sync the active project knowledge graph into the central memory database (~/memory/memory.db by default) so all projects share one searchable map",
     "parameters": {
-      "properties": {
-        "filePath": {
-          "description": "Relative or absolute file path to look up",
-          "type": "string"
-        }
-      },
-      "required": [
-        "filePath"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "export_data",
-    "server": "hela-genome",
-    "description": "Export memory.db table data to file",
-    "parameters": {
-      "properties": {
-        "conditions": {
-          "description": "WHERE conditions",
-          "type": "object"
-        },
-        "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
-          "enum": [
-            "project",
-            "central"
-          ],
-          "type": "string"
-        },
-        "filePath": {
-          "description": "Output file path",
-          "type": "string"
-        },
-        "format": {
-          "default": "csv",
-          "description": "Output format",
-          "enum": [
-            "csv",
-            "json"
-          ],
-          "type": "string"
-        },
-        "options": {
-          "properties": {
-            "delimiter": {
-              "description": "CSV delimiter",
-              "type": "string"
-            },
-            "encoding": {
-              "description": "File encoding",
-              "type": "string"
-            },
-            "includeHeader": {
-              "description": "Include header in CSV",
-              "type": "boolean"
-            }
-          },
-          "type": "object"
-        },
-        "table": {
-          "description": "Table name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "table",
-        "filePath"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "execute_sql",
-    "server": "hela-genome",
-    "description": "Canonical memory-graph SQL inspection (use instead of hela-ribosome opencode_db). Execute raw SQL query on the project or central memory database (database: 'project' | 'central', default 'project')",
-    "parameters": {
-      "properties": {
-        "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
-          "enum": [
-            "project",
-            "central"
-          ],
-          "type": "string"
-        },
-        "parameters": {
-          "description": "Query parameters",
-          "type": "array"
-        },
-        "query": {
-          "description": "SQL query to execute",
-          "type": "string"
-        }
-      },
-      "required": [
-        "query"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "delete_relation",
-    "server": "hela-genome",
-    "description": "Delete relation(s) between project entities",
-    "parameters": {
-      "properties": {
-        "relations": {
-          "description": "Array of relations to delete (supports single or batch)",
-          "items": {
-            "properties": {
-              "from": {
-                "description": "Source entity name",
-                "type": "string"
-              },
-              "relationType": {
-                "description": "Relationship type to delete",
-                "type": "string"
-              },
-              "to": {
-                "description": "Target entity name",
-                "type": "string"
-              }
-            },
-            "required": [
-              "from",
-              "to",
-              "relationType"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "relations"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "delete_observation",
-    "server": "hela-genome",
-    "description": "Remove specific observation(s) from entity/entities",
-    "parameters": {
-      "properties": {
-        "deletions": {
-          "description": "Array of observation deletions (supports single or batch)",
-          "items": {
-            "properties": {
-              "entityName": {
-                "description": "Entity name",
-                "type": "string"
-              },
-              "observations": {
-                "description": "Observations to remove",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "entityName",
-              "observations"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "deletions"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "delete_entity",
-    "server": "hela-genome",
-    "description": "Delete entity/entities and their relations from project memory",
-    "parameters": {
-      "properties": {
-        "entityNames": {
-          "description": "Names of entities to delete (supports single or batch)",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "entityNames"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "delete_data",
-    "server": "hela-genome",
-    "description": "Delete records from memory.db table",
-    "parameters": {
-      "properties": {
-        "conditions": {
-          "description": "WHERE conditions",
-          "type": "object"
-        },
-        "database": {
-          "default": "project",
-          "description": "Target store: active project database or central aggregate",
-          "enum": [
-            "project",
-            "central"
-          ],
-          "type": "string"
-        },
-        "table": {
-          "description": "Table name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "table",
-        "conditions"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "create_relation",
-    "server": "hela-genome",
-    "description": "Create relation(s) between project entities",
-    "parameters": {
-      "properties": {
-        "relations": {
-          "description": "Array of relations to create (supports single or batch)",
-          "items": {
-            "properties": {
-              "from": {
-                "description": "Source entity name",
-                "type": "string"
-              },
-              "relationType": {
-                "description": "Relationship type (depends_on, blocks, owns, etc.)",
-                "type": "string"
-              },
-              "to": {
-                "description": "Target entity name",
-                "type": "string"
-              }
-            },
-            "required": [
-              "from",
-              "to",
-              "relationType"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "relations"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "create_entity",
-    "server": "hela-genome",
-    "description": "Create entity/entities in the project knowledge graph",
-    "parameters": {
-      "properties": {
-        "entities": {
-          "description": "Array of entities to create (supports single or batch)",
-          "items": {
-            "properties": {
-              "entityType": {
-                "description": "Type (project, task, person, resource)",
-                "type": "string"
-              },
-              "name": {
-                "description": "Entity name",
-                "type": "string"
-              },
-              "observations": {
-                "description": "Notes about the entity",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "name",
-              "entityType",
-              "observations"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "entities"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "close_ui",
-    "server": "hela-genome",
-    "description": "Stop the Project Guardian Web UI server if running. Use after start_ui or to free port 3000.",
-    "parameters": {
+      "type": "object",
       "properties": {},
       "required": [],
-      "type": "object"
+      "additionalProperties": false
     }
   },
   {
-    "name": "cache_set",
+    "name": "set_project_root",
     "server": "hela-genome",
-    "description": "Set a value in the optional Redis companion cache",
+    "description": "Switch the active project memory database to the given absolute project path. Use at session start when the server was launched outside the project directory",
     "parameters": {
-      "additionalProperties": false,
+      "type": "object",
       "properties": {
-        "key": {
-          "type": "string"
-        },
-        "ttlSeconds": {
-          "maximum": 604800,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "value": {
-          "type": "string"
+        "path": {
+          "type": "string",
+          "description": "Absolute path to the project root",
+          "pattern": "^/"
         }
       },
       "required": [
-        "key",
-        "value"
+        "path"
       ],
-      "type": "object"
+      "additionalProperties": false
     }
   },
   {
-    "name": "cache_scan",
+    "name": "setup_pre_commit",
     "server": "hela-genome",
-    "description": "Scan namespaced keys in the optional Redis companion cache",
+    "description": "Create a .pre-commit-config.yaml in the active project root and install the Git hooks, on demand. Requires pre-commit to be installed",
     "parameters": {
-      "additionalProperties": false,
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "get_session_context",
+    "server": "hela-genome",
+    "description": "Summarize active tasks, open bugs, recent changes, and blockers from project memory",
+    "parameters": {
+      "type": "object",
       "properties": {
-        "count": {
-          "default": 100,
-          "maximum": 200,
+        "limit": {
+          "type": "integer",
           "minimum": 1,
-          "type": "integer"
-        },
-        "cursor": {
-          "default": 0,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "pattern": {
-          "default": "mema:*",
-          "type": "string"
+          "maximum": 50,
+          "default": 10
         }
       },
       "required": [],
-      "type": "object"
-    }
-  },
-  {
-    "name": "cache_get",
-    "server": "hela-genome",
-    "description": "Get a value from the optional Redis companion cache",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
-        "key": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "key"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "cache_delete",
-    "server": "hela-genome",
-    "description": "Delete a value from the optional Redis companion cache",
-    "parameters": {
-      "additionalProperties": false,
-      "properties": {
-        "key": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "key"
-      ],
-      "type": "object"
+      "additionalProperties": false
     }
   },
   {
@@ -6249,66 +5648,240 @@
     "server": "hela-genome",
     "description": "Analyze bounded Git changes and untracked files in the current workspace",
     "parameters": {
-      "additionalProperties": false,
+      "type": "object",
       "properties": {
         "commit": {
           "type": "string"
         },
+        "since": {
+          "type": "string",
+          "default": "1"
+        },
         "includeUntracked": {
-          "default": true,
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         },
         "maxFiles": {
-          "default": 100,
-          "maximum": 500,
+          "type": "integer",
           "minimum": 1,
-          "type": "integer"
-        },
-        "since": {
-          "default": "1",
-          "type": "string"
+          "maximum": 500,
+          "default": 100
         }
       },
       "required": [],
-      "type": "object"
+      "additionalProperties": false
     }
   },
   {
-    "name": "add_observation",
+    "name": "inspect_untrusted_text",
     "server": "hela-genome",
-    "description": "Add observation(s) to project entity/entities",
+    "description": "Normalize untrusted text and detect common prompt-injection indicators",
     "parameters": {
+      "type": "object",
       "properties": {
-        "observations": {
-          "description": "Array of observation updates (supports single or batch)",
-          "items": {
-            "properties": {
-              "contents": {
-                "description": "Observations to add",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "entityName": {
-                "description": "Entity name",
-                "type": "string"
-              }
-            },
-            "required": [
-              "entityName",
-              "contents"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
+        "text": {
+          "type": "string",
+          "description": "Untrusted text, maximum 256 KiB"
         }
       },
       "required": [
-        "observations"
+        "text"
       ],
-      "type": "object"
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "security_scan",
+    "server": "hela-genome",
+    "description": "Scan for likely hardcoded credentials without exposing values, or scan a container image for HIGH/CRITICAL vulnerabilities with Trivy. Select action: secrets or container.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "secrets",
+            "container"
+          ],
+          "description": "Scan type"
+        },
+        "path": {
+          "type": "string",
+          "default": ".",
+          "description": "Workspace-relative path for secrets"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Basenames to exclude"
+        },
+        "image": {
+          "type": "string",
+          "description": "Container image reference for container scans"
+        },
+        "maxFindings": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "cache",
+    "server": "hela-genome",
+    "description": "Read or mutate the optional Redis companion cache. Select action: get, set, delete, or scan. Keys must use the mema:<category>:<name> namespace.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "get",
+            "set",
+            "delete",
+            "scan"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "description": "Required for get, set, and delete"
+        },
+        "value": {
+          "type": "string",
+          "description": "Required for set"
+        },
+        "ttlSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "pattern": {
+          "type": "string",
+          "default": "mema:*",
+          "description": "Required for scan"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 100
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "harness_sessions",
+    "server": "hela-genome",
+    "description": "List local agent-harness session stores or sync their session metadata into the knowledge graph. Select action: list (read-only paths/presence/format notes) or sync (redacted titles, summaries, timestamps; supports dryRun).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "sync"
+          ],
+          "description": "Operation to perform"
+        },
+        "harnesses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "opencode",
+              "kilocode",
+              "zed",
+              "delta",
+              "antigravity",
+              "cursor",
+              "vscode",
+              "codex"
+            ]
+          },
+          "description": "Harnesses to sync (default: all found)"
+        },
+        "project": {
+          "type": "string",
+          "description": "Substring filter on session project/directory"
+        },
+        "since": {
+          "type": "number",
+          "description": "Only sessions updated after this ms epoch"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max sessions per harness (default 50, max 500)"
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "Report what would sync without writing"
+        },
+        "includeArchived": {
+          "type": "boolean",
+          "description": "Include archived sessions (default false)"
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "ui_server",
+    "server": "hela-genome",
+    "description": "Start or stop the Project Guardian Web UI server on demand. Start automatically searches for a free port and returns the local HTTP URL; stop frees the port.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "start",
+            "stop"
+          ],
+          "description": "Lifecycle action"
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "read_graph_stream",
+    "server": "hela-genome",
+    "description": "Stream the knowledge graph with cursor pagination (500/page, updated_at DESC). Returns entities, relations, nextCursor.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "description": "Base64url cursor from previous nextCursor"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max entities per page (1-1000, default 500)"
+        }
+      },
+      "required": []
     }
   },
   {

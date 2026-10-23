@@ -3,8 +3,8 @@
  *
  * The planner must select CAPABILITIES first (`filesystem.read`,
  * `terminal.execute`, ...) and only then see the concrete tools behind
- * them — never a 200+ flat tool dump (Cytosol ~93, Genome 38, Enzyme 29,
- * Phenotype 46, Receptor 46, Ribosome 28).
+ * them — never a 290+ flat tool dump (Cytosol 73, Genome 26, Enzyme 24,
+ * Phenotype 28, Receptor 46, Ribosome 28).
  *
  * v2 Dynamic Resolver Features:
  * 1. Hybrid Lexical + Stemmed Keyword Matching (exact: 3.5/3.0, stem: 1.8).
@@ -109,8 +109,8 @@ export const HELA_CAPABILITIES: HelaCapability[] = [
     name: 'ui.design',
     description: 'Design tokens, components, templates, palettes, Awwwards motion, and Stitch Canvas (R0/R1/pure)',
     servers: ['designer', 'phenotype'],
-    toolPatterns: ['design', 'palette', 'template', 'tokens', 'component', 'motion', 'brand', 'theme', 'style', 'genre', 'stitch', 'bento', 'marquee', 'awwwards'],
-    keywords: ['design', 'landing page', 'component', 'palette', 'theme', 'style', 'css', 'mockup', 'ui', 'stitch', 'canvas', 'screen', 'awwwards', 'bento', 'motion', 'animation', 'token'],
+    toolPatterns: ['design', 'palette', 'template', 'token', 'component', 'motion', 'brand', 'theme', 'style', 'genre', 'stitch', 'logo', 'audit', 'bento', 'marquee', 'awwwards'],
+    keywords: ['design', 'landing page', 'component', 'palette', 'theme', 'style', 'css', 'mockup', 'ui', 'stitch', 'canvas', 'screen', 'logo', 'brand', 'audit', 'awwwards', 'bento', 'motion', 'animation', 'token'],
   },
 ];
 
@@ -290,6 +290,12 @@ const EXPLICIT_TOOL_CAPABILITY: Record<string, string> = {
   google_search: 'research.search',
   browser_search: 'research.search',
   browser_get_content: 'browser.observe',
+  logo_workflow: 'ui.design',
+  design_audit: 'ui.design',
+  design_tokens: 'ui.design',
+  palette: 'ui.design',
+  stitch_resource: 'ui.design',
+  memory_edit: 'project.query',
   read_file: 'filesystem.read',
   terminal_cat: 'terminal.execute',
   execute_sql: 'project.query',

@@ -267,7 +267,7 @@ Best practices:
 - Regularly review and update knowledge
 
 This enables the system to learn and provide better assistance over time.`,
-    expectedTools: ['create_entities', 'create_relations', 'add_observations', 'search_nodes', 'read_graph']
+    expectedTools: ['memory_edit', 'search_nodes', 'read_graph']
   },
 
   {
